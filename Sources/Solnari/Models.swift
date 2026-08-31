@@ -69,6 +69,27 @@ enum ConnectionStatus: String, Hashable, Codable, Sendable {
   }
 }
 
+struct CloudSQLConfiguration: Hashable, Codable, Sendable {
+  var project: String
+  var region: String
+  var instance: String
+  var useIAMAuthentication: Bool
+
+  var connectionName: String { "\(project):\(region):\(instance)" }
+}
+
+struct SSHConfiguration: Hashable, Codable, Sendable {
+  var host: String
+  var port: Int
+  var username: String
+}
+
+struct KubernetesConfiguration: Hashable, Codable, Sendable {
+  var context: String
+  var namespace: String
+  var relayImage: String
+}
+
 struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
   let id: UUID
   var name: String
@@ -85,13 +106,19 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
   var serverVersion: String?
   var serverEncoding: String?
   var serverTimeZone: String?
+  var cloudSQL: CloudSQLConfiguration?
+  var ssh: SSHConfiguration?
+  var kubernetes: KubernetesConfiguration?
+  var preferredCharacterSet: String?
+  var preferredCollation: String?
+  var auditTextSettings: Bool?
 
   var subtitle: String {
     switch transport {
-    case .direct: "\(host):\(port)"
-    case .cloudSQL: host
-    case .ssh: "SSH · \(host):\(port)"
-    case .kubernetes: "Kubernetes · \(host):\(port)"
+    case .direct: engine == .sqlite ? database : "\(host):\(port)"
+    case .cloudSQL: cloudSQL?.connectionName ?? "Cloud SQL"
+    case .ssh: "SSH · \(ssh?.host ?? host)"
+    case .kubernetes: "Kubernetes · \(kubernetes?.context ?? host)"
     }
   }
 
@@ -110,7 +137,13 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
     latency: Int? = nil,
     serverVersion: String? = nil,
     serverEncoding: String? = nil,
-    serverTimeZone: String? = nil
+    serverTimeZone: String? = nil,
+    cloudSQL: CloudSQLConfiguration? = nil,
+    ssh: SSHConfiguration? = nil,
+    kubernetes: KubernetesConfiguration? = nil,
+    preferredCharacterSet: String? = nil,
+    preferredCollation: String? = nil,
+    auditTextSettings: Bool? = nil
   ) {
     self.id = id
     self.name = name
@@ -127,6 +160,12 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
     self.serverVersion = serverVersion
     self.serverEncoding = serverEncoding
     self.serverTimeZone = serverTimeZone
+    self.cloudSQL = cloudSQL
+    self.ssh = ssh
+    self.kubernetes = kubernetes
+    self.preferredCharacterSet = preferredCharacterSet
+    self.preferredCollation = preferredCollation
+    self.auditTextSettings = auditTextSettings
   }
 
   func persisted() -> ConnectionProfile {
@@ -211,47 +250,93 @@ struct ConnectionDraft: Equatable, Sendable {
   var password = ""
   var requiresTLS = false
   var cloudProject = ""
+  var cloudRegion = ""
   var cloudInstance = ""
   var useIAM = true
   var sshHost = ""
+  var sshPort = "22"
+  var sshUser = ""
   var kubeContext = ""
   var namespace = "default"
+  var relayImage = "alpine/socat:1.8.0.3"
   var clientEncoding = "Automatic"
   var preferredCharacterSet = "Database default"
   var preferredCollation = "Database default"
   var auditTextSettings = true
 
-  var isDirectPostgreSQL: Bool {
-    engine == .postgresql && transport == .direct
+  var supportsSelectedTransport: Bool {
+    engine != .sqlite || transport == .direct
   }
 
   var isValid: Bool {
-    !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && !user.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      && Int(port).map { (1...65_535).contains($0) } == true
-      && isDirectPostgreSQL
+    guard !name.trimmed.isEmpty, supportsSelectedTransport else { return false }
+    if engine == .sqlite {
+      return !database.trimmed.isEmpty
+    }
+    guard !host.trimmed.isEmpty, !user.trimmed.isEmpty, Self.isValidPort(port) else {
+      return false
+    }
+    switch transport {
+    case .direct:
+      return true
+    case .cloudSQL:
+      return !cloudProject.trimmed.isEmpty && !cloudRegion.trimmed.isEmpty
+        && !cloudInstance.trimmed.isEmpty
+    case .ssh:
+      return !sshHost.trimmed.isEmpty && !sshUser.trimmed.isEmpty && Self.isValidPort(sshPort)
+    case .kubernetes:
+      return !kubeContext.trimmed.isEmpty && !namespace.trimmed.isEmpty
+        && !relayImage.trimmed.isEmpty
+    }
   }
 
   func makeProfile(id: UUID = UUID()) throws -> ConnectionProfile {
-    guard let portNumber = Int(port), (1...65_535).contains(portNumber) else {
+    let portNumber = engine == .sqlite ? 0 : (Int(port) ?? 0)
+    guard engine == .sqlite || (1...65_535).contains(portNumber) else {
       throw SolnariDatabaseError.invalidPort
     }
-    guard isDirectPostgreSQL else {
+    guard supportsSelectedTransport else {
       throw SolnariDatabaseError.unsupportedConnection
     }
+    guard isValid else { throw SolnariDatabaseError.incompleteConnection }
     return ConnectionProfile(
       id: id,
-      name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-      database: database.trimmingCharacters(in: .whitespacesAndNewlines),
+      name: name.trimmed,
+      database: database.trimmed,
       engine: engine,
       transport: transport,
-      host: host.trimmingCharacters(in: .whitespacesAndNewlines),
+      host: host.trimmed,
       port: portNumber,
-      username: user.trimmingCharacters(in: .whitespacesAndNewlines),
+      username: user.trimmed,
       requiresTLS: requiresTLS,
-      clientEncoding: clientEncoding
+      clientEncoding: clientEncoding,
+      cloudSQL: transport == .cloudSQL
+        ? CloudSQLConfiguration(
+          project: cloudProject.trimmed,
+          region: cloudRegion.trimmed,
+          instance: cloudInstance.trimmed,
+          useIAMAuthentication: useIAM
+        ) : nil,
+      ssh: transport == .ssh
+        ? SSHConfiguration(
+          host: sshHost.trimmed,
+          port: Int(sshPort) ?? 22,
+          username: sshUser.trimmed
+        ) : nil,
+      kubernetes: transport == .kubernetes
+        ? KubernetesConfiguration(
+          context: kubeContext.trimmed,
+          namespace: namespace.trimmed,
+          relayImage: relayImage.trimmed
+        ) : nil,
+      preferredCharacterSet: preferredCharacterSet,
+      preferredCollation: preferredCollation,
+      auditTextSettings: auditTextSettings
     )
+  }
+
+  private static func isValidPort(_ value: String) -> Bool {
+    Int(value).map { (1...65_535).contains($0) } == true
   }
 }
 
@@ -271,21 +356,33 @@ struct QueryExecutionResult: Hashable, Sendable {
 enum SolnariDatabaseError: LocalizedError, Sendable {
   case invalidPort
   case unsupportedConnection
+  case incompleteConnection
   case missingConnection
   case missingPassword
   case notConnected
   case invalidServerResponse
+  case missingExecutable(String)
+  case transportFailed(String)
+  case transportTimedOut
   case keychain(OSStatus)
 
   var errorDescription: String? {
     switch self {
     case .invalidPort: "Port must be a number between 1 and 65535."
-    case .unsupportedConnection: "Only direct PostgreSQL connections are available right now."
+    case .unsupportedConnection: "SQLite supports direct file connections only."
+    case .incompleteConnection: "Fill in every required connection field."
     case .missingConnection: "The selected connection no longer exists."
     case .missingPassword: "The password is not available in macOS Keychain."
     case .notConnected: "Connect to the database before running a query."
-    case .invalidServerResponse: "PostgreSQL returned an unexpected response."
+    case .invalidServerResponse: "The database returned an unexpected response."
+    case .missingExecutable(let name): "Install or configure the required \(name) command."
+    case .transportFailed(let message): "The connection path failed: \(message)"
+    case .transportTimedOut: "The local connection path did not become ready in time."
     case .keychain(let status): "macOS Keychain returned error \(status)."
     }
   }
+}
+
+extension String {
+  fileprivate var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 }

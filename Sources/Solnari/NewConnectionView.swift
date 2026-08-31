@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct NewConnectionView: View {
@@ -39,7 +40,13 @@ struct NewConnectionView: View {
     .frame(width: 720, height: 680)
     .background(SolnariTheme.panel)
     .onChange(of: draft.engine) {
-      draft.port = draft.engine == .mysql ? "3306" : "5432"
+      switch draft.engine {
+      case .postgresql: draft.port = "5432"
+      case .mysql: draft.port = "3306"
+      case .sqlite:
+        draft.port = ""
+        draft.transport = .direct
+      }
       draft.clientEncoding = "Automatic"
       draft.preferredCharacterSet = "Database default"
       draft.preferredCollation = "Database default"
@@ -134,25 +141,35 @@ struct NewConnectionView: View {
   }
 
   private var directFields: some View {
-    VStack(spacing: 14) {
-      HStack(spacing: 14) {
-        labeledField("Host", placeholder: "localhost", text: $draft.host)
-        labeledField("Port", placeholder: "5432", text: $draft.port, width: 110)
-      }
-      HStack(spacing: 14) {
-        labeledField("Database", placeholder: "app_production", text: $draft.database)
-        labeledField("User", placeholder: "postgres", text: $draft.user)
-      }
-      HStack(spacing: 14) {
+    Group {
+      if draft.engine == .sqlite {
         VStack(alignment: .leading, spacing: 7) {
-          fieldLabel("Password")
-          SecureField(settings.text("Stored in macOS Keychain"), text: $draft.password)
-            .textFieldStyle(.roundedBorder)
+          fieldLabel("SQLite database file")
+          HStack(spacing: 8) {
+            TextField("/Users/me/data.sqlite", text: $draft.database)
+              .textFieldStyle(.roundedBorder)
+            Button(settings.text("Open…")) { chooseExistingSQLiteFile() }
+            Button(settings.text("New…")) { chooseNewSQLiteFile() }
+          }
+          Text(settings.text("An existing file is opened; a new file is created when needed."))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
         }
-        Toggle(isOn: $draft.requiresTLS) {
-          Text(settings.text("Require TLS"))
+      } else {
+        VStack(spacing: 14) {
+          HStack(spacing: 14) {
+            labeledField("Host", placeholder: "localhost", text: $draft.host)
+            labeledField("Port", placeholder: defaultPort, text: $draft.port, width: 110)
+          }
+          databaseCredentialFields
+          HStack(spacing: 14) {
+            passwordField
+            Toggle(isOn: $draft.requiresTLS) {
+              Text(settings.text("Require TLS"))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
   }
@@ -161,8 +178,8 @@ struct NewConnectionView: View {
     VStack(spacing: 14) {
       HStack {
         HStack(spacing: 8) {
-          Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(SolnariTheme.mint)
+          Image(systemName: "person.crop.circle.badge.checkmark")
+            .foregroundStyle(SolnariTheme.indigo)
           VStack(alignment: .leading, spacing: 1) {
             Text(settings.text("Google Cloud authentication"))
               .font(.system(size: 12, weight: .medium))
@@ -172,9 +189,9 @@ struct NewConnectionView: View {
           }
         }
         Spacer()
-        Button(settings.text("Change account")) {}
-          .buttonStyle(.link)
+        Text(settings.text("Uses current ADC account"))
           .font(.caption)
+          .foregroundStyle(.secondary)
       }
       .padding(10)
       .background(
@@ -182,12 +199,14 @@ struct NewConnectionView: View {
 
       HStack(spacing: 14) {
         labeledField("Project", placeholder: "project-id", text: $draft.cloudProject)
+        labeledField("Region", placeholder: "asia-northeast3", text: $draft.cloudRegion)
         labeledField("Cloud SQL instance", placeholder: "instance", text: $draft.cloudInstance)
       }
       HStack(spacing: 14) {
         labeledField("Database", placeholder: "app_production", text: $draft.database)
         labeledField("Database user", placeholder: "user@example.com", text: $draft.user)
       }
+      passwordField
       Toggle(isOn: $draft.useIAM) {
         Text(settings.text("Use automatic IAM database authentication"))
       }
@@ -199,12 +218,15 @@ struct NewConnectionView: View {
     VStack(spacing: 14) {
       HStack(spacing: 14) {
         labeledField("Database host", placeholder: "postgres.private", text: $draft.host)
-        labeledField("Port", placeholder: "5432", text: $draft.port, width: 110)
+        labeledField("Port", placeholder: defaultPort, text: $draft.port, width: 110)
       }
       HStack(spacing: 14) {
         labeledField("SSH host", placeholder: "bastion.example.com", text: $draft.sshHost)
-        labeledField("SSH user", placeholder: "ubuntu", text: $draft.user)
+        labeledField("SSH port", placeholder: "22", text: $draft.sshPort, width: 110)
+        labeledField("SSH user", placeholder: "ubuntu", text: $draft.sshUser)
       }
+      databaseCredentialFields
+      passwordField
       HStack {
         Label(
           settings.text("Uses keys from ~/.ssh and the system SSH agent"),
@@ -212,10 +234,6 @@ struct NewConnectionView: View {
         )
         .font(.caption)
         .foregroundStyle(.secondary)
-        Spacer()
-        Button(settings.text("Advanced…")) {}
-          .buttonStyle(.link)
-          .font(.caption)
       }
     }
   }
@@ -228,8 +246,11 @@ struct NewConnectionView: View {
       }
       HStack(spacing: 14) {
         labeledField("Database host", placeholder: "postgres.private", text: $draft.host)
-        labeledField("Port", placeholder: "5432", text: $draft.port, width: 110)
+        labeledField("Port", placeholder: defaultPort, text: $draft.port, width: 110)
       }
+      databaseCredentialFields
+      passwordField
+      labeledField("Relay image", placeholder: "alpine/socat:1.8.0.3", text: $draft.relayImage)
 
       HStack(spacing: 10) {
         Image(systemName: "shippingbox.fill")
@@ -381,10 +402,12 @@ struct NewConnectionView: View {
   private var transportGuideNodes: [(symbol: String, title: String)] {
     switch draft.transport {
     case .direct:
-      [
-        ("laptopcomputer", "This Mac"), ("network", "Private or public network"),
-        (draft.engine.symbol, "Database"),
-      ]
+      draft.engine == .sqlite
+        ? [("laptopcomputer", "This Mac"), ("doc.badge.gearshape", "SQLite database file")]
+        : [
+          ("laptopcomputer", "This Mac"), ("network", "Private or public network"),
+          (draft.engine.symbol, "Database"),
+        ]
     case .cloudSQL:
       [
         ("laptopcomputer", "This Mac"), ("shield.lefthalf.filled", "Cloud SQL Proxy"),
@@ -405,7 +428,10 @@ struct NewConnectionView: View {
 
   private var transportGuideTitle: String {
     switch draft.transport {
-    case .direct: "Best for local development and databases already reachable from this Mac."
+    case .direct:
+      draft.engine == .sqlite
+        ? "Best for a local SQLite database file."
+        : "Best for local development and databases already reachable from this Mac."
     case .cloudSQL: "Best for Google Cloud SQL with Application Default Credentials."
     case .ssh: "Best when only a bastion host can reach the database."
     case .kubernetes: "Best when a Kubernetes cluster can reach a private database."
@@ -414,9 +440,12 @@ struct NewConnectionView: View {
 
   private var transportGuideDescription: String {
     switch draft.transport {
-    case .direct: "Solnari connects to the host and port directly. TLS can still protect traffic."
+    case .direct:
+      draft.engine == .sqlite
+        ? "Solnari opens the local file directly without a network connection."
+        : "Solnari connects to the host and port directly. TLS can still protect traffic."
     case .cloudSQL:
-      "The bundled proxy opens a local secure endpoint and refreshes short-lived credentials automatically."
+      "Cloud SQL Auth Proxy opens a local secure endpoint and refreshes short-lived credentials automatically."
     case .ssh:
       "Solnari forwards a local port through your SSH agent without exposing the database publicly."
     case .kubernetes:
@@ -469,9 +498,9 @@ struct NewConnectionView: View {
       case .idle:
         Text(
           settings.text(
-            draft.isDirectPostgreSQL
+            draft.supportsSelectedTransport
               ? "Test the path before saving."
-              : "Only direct PostgreSQL connections are available right now.")
+              : "SQLite supports direct file connections only.")
         )
         .foregroundStyle(.secondary)
       case .testing:
@@ -555,7 +584,9 @@ struct NewConnectionView: View {
 
   private func transportCard(_ transport: ConnectionTransport) -> some View {
     let isSelected = draft.transport == transport
+    let isSupported = draft.engine != .sqlite || transport == .direct
     return Button {
+      guard isSupported else { return }
       withAnimation(.easeOut(duration: 0.15)) { draft.transport = transport }
       testState = .idle
     } label: {
@@ -590,6 +621,8 @@ struct NewConnectionView: View {
       )
     }
     .buttonStyle(.plain)
+    .disabled(!isSupported)
+    .opacity(isSupported ? 1 : 0.45)
   }
 
   private func fieldLabel(_ title: String) -> some View {
@@ -608,5 +641,48 @@ struct NewConnectionView: View {
     }
     .frame(width: width)
     .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
+  }
+
+  private var databaseCredentialFields: some View {
+    HStack(spacing: 14) {
+      labeledField("Database", placeholder: "app_production", text: $draft.database)
+      labeledField(
+        "Database user", placeholder: draft.engine == .mysql ? "root" : "postgres",
+        text: $draft.user)
+    }
+  }
+
+  private var passwordField: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      fieldLabel("Password")
+      SecureField(settings.text("Stored in macOS Keychain"), text: $draft.password)
+        .textFieldStyle(.roundedBorder)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var defaultPort: String {
+    draft.engine == .mysql ? "3306" : "5432"
+  }
+
+  private func chooseExistingSQLiteFile() {
+    let panel = NSOpenPanel()
+    panel.title = settings.text("Open SQLite database")
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    if panel.runModal() == .OK, let url = panel.url {
+      draft.database = url.path
+    }
+  }
+
+  private func chooseNewSQLiteFile() {
+    let panel = NSSavePanel()
+    panel.title = settings.text("Create SQLite database")
+    panel.nameFieldStringValue = "database.sqlite"
+    panel.canCreateDirectories = true
+    if panel.runModal() == .OK, let url = panel.url {
+      draft.database = url.path
+    }
   }
 }

@@ -19,12 +19,12 @@ final class WorkspaceModel: ObservableObject {
   @Published var selectedResultTab = "Results"
   @Published var presentedError: String?
 
-  private let backend: PostgreSQLBackend
+  private let backend: DatabaseBackend
   private let profileStore: ConnectionProfileStore
   private let passwordStore: KeychainPasswordStore
 
   init(
-    backend: PostgreSQLBackend = PostgreSQLBackend(),
+    backend: DatabaseBackend = DatabaseBackend(),
     profileStore: ConnectionProfileStore = ConnectionProfileStore(),
     passwordStore: KeychainPasswordStore = KeychainPasswordStore()
   ) {

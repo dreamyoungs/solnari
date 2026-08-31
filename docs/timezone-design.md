@@ -44,7 +44,9 @@ When Solnari applies an assumed time zone, the grid should show that fact in the
 Adapters may expose session-time-zone controls where the database supports them, but the display setting and session setting remain separate concepts. Changing how a value is displayed must not unexpectedly alter query semantics.
 
 - PostgreSQL: inspect `TimeZone` and distinguish `timestamp` from `timestamptz`.
-- MySQL: inspect session/global time zone and ensure named-zone availability before using it.
+- MySQL: Solnari sets the wire session to `+00:00` so `TIMESTAMP` values decode as canonical
+  instants without depending on installed named-zone tables. `DATETIME` remains a zone-less wall
+  clock value. The user's display time zone is applied only after typed decoding.
 - SQLite: treat stored text/numeric date values according to the expression and catalog metadata; SQLite has no intrinsic per-value time-zone type.
 
 ## Export and copy

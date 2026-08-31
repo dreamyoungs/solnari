@@ -24,7 +24,10 @@ struct ConnectionProfileStoreTests {
       latency: 12,
       serverVersion: "17.2",
       serverEncoding: "UTF8",
-      serverTimeZone: "Asia/Seoul"
+      serverTimeZone: "Asia/Seoul",
+      preferredCharacterSet: "UTF8",
+      preferredCollation: "ko-KR-x-icu",
+      auditTextSettings: true
     )
 
     try store.save([profile])
@@ -36,10 +39,13 @@ struct ConnectionProfileStoreTests {
     #expect(loaded.status == .disconnected)
     #expect(loaded.latency == nil)
     #expect(loaded.serverVersion == nil)
+    #expect(loaded.preferredCharacterSet == "UTF8")
+    #expect(loaded.preferredCollation == "ko-KR-x-icu")
+    #expect(loaded.auditTextSettings == true)
   }
 
-  @Test("연결 초안은 잘못된 포트와 아직 지원하지 않는 엔진을 거부한다")
-  func draftRejectsUnsupportedAndInvalidConnections() {
+  @Test("연결 초안은 엔진과 네트워크 경로별 필수 입력을 검증한다")
+  func draftValidatesEveryEngineAndTransport() throws {
     var draft = ConnectionDraft()
     draft.name = "Local"
     draft.host = "localhost"
@@ -48,9 +54,47 @@ struct ConnectionProfileStoreTests {
     #expect(!draft.isValid)
     #expect(throws: (any Error).self) { try draft.makeProfile() }
 
-    draft.port = "5432"
+    draft.port = "3306"
     draft.engine = .mysql
+    #expect(draft.isValid)
+    #expect(try draft.makeProfile().engine == .mysql)
+
+    draft.transport = .ssh
     #expect(!draft.isValid)
-    #expect(throws: (any Error).self) { try draft.makeProfile() }
+    draft.sshHost = "bastion.example.com"
+    draft.sshUser = "ubuntu"
+    #expect(draft.isValid)
+    let sshProfile = try draft.makeProfile()
+    #expect(sshProfile.ssh?.username == "ubuntu")
+    #expect(sshProfile.username == "postgres")
+
+    draft.engine = .sqlite
+    draft.transport = .cloudSQL
+    draft.database = "/tmp/solnari.sqlite"
+    #expect(!draft.isValid)
+    draft.transport = .direct
+    #expect(draft.isValid)
+  }
+
+  @Test("기존 v1 프로필은 새 경로 설정이 없어도 마이그레이션 없이 읽힌다")
+  func legacyProfileDecodesWithoutTransportDetails() throws {
+    let json = """
+      [{
+        "id":"00000000-0000-0000-0000-000000000001",
+        "name":"Legacy",
+        "database":"postgres",
+        "engine":"PostgreSQL",
+        "transport":"Direct",
+        "host":"localhost",
+        "port":5432,
+        "username":"postgres",
+        "requiresTLS":false,
+        "clientEncoding":"UTF8",
+        "status":"Disconnected"
+      }]
+      """
+    let profiles = try JSONDecoder().decode([ConnectionProfile].self, from: Data(json.utf8))
+    #expect(profiles.first?.name == "Legacy")
+    #expect(profiles.first?.cloudSQL == nil)
   }
 }

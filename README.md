@@ -2,17 +2,17 @@
 
 **An open-source database client for humans and agents, built for macOS.**
 
-Solnari explores a native SwiftUI experience for working with local, cloud, and private databases. Direct PostgreSQL connections now run end to end; the remaining engines, network transports, and Codex integration are still being developed behind explicit boundaries.
+Solnari explores a native SwiftUI experience for working with local, cloud, and private databases. PostgreSQL, MySQL, and SQLite now share one connection workflow, with direct, Cloud SQL, SSH, and Kubernetes paths where each engine supports them.
 
 ## Current features
 
-- Direct PostgreSQL connection testing, schema discovery, and query execution
+- PostgreSQL, MySQL, and SQLite connection testing, schema discovery, and query execution
 - Persistent named connection profiles with passwords stored separately in macOS Keychain
 - Native macOS workspace with live connection status and schema navigation
 - Multi-tab SQL editor and resizable editor/results layout
 - Dynamic AppKit-backed result table with resizable columns and multiple-row selection
 - Result copy and export as CSV, TSV, JSON, JSON Lines, Markdown, and SQL `INSERT`
-- Guided connection flows for Direct TCP, Google Cloud SQL, SSH, and Kubernetes
+- Working connection paths for Direct TCP, Google Cloud SQL Auth Proxy, SSH, and Kubernetes relay pods
 - Engine-aware character-set and collation options for PostgreSQL, MySQL, and SQLite
 - Embedded Codex assistant experience with SQL proposals and explicit editor handoff
 - Runtime language switching between English and Korean
@@ -23,8 +23,6 @@ Solnari explores a native SwiftUI experience for working with local, cloud, and 
 
 The following interactions are intentionally unavailable or mocked in this milestone:
 
-- Cloud SQL Proxy, SSH, and Kubernetes tunnel processes;
-- MySQL and SQLite backends;
 - Codex App Server communication;
 - character-set, collation, and permission audits;
 - query cancellation, transaction controls, and data editing.
@@ -33,7 +31,7 @@ Keeping these boundaries visible lets contributors evaluate the product flow bef
 
 ## Architecture direction
 
-Solnari keeps database engines separate from network transports. The current PostgreSQL backend owns connection pools, metadata discovery, and typed query decoding without coupling those responsibilities to SwiftUI. See [Backend architecture](docs/backend-architecture.md).
+Solnari keeps database engines separate from network transports. Engine adapters own live sessions, metadata discovery, schema inspection, and typed result decoding; a transport manager supplies local endpoints without coupling process lifecycles to SwiftUI. See [Backend architecture](docs/backend-architecture.md) and [Connection paths](docs/connection-paths.md).
 
 Results will cross the backend boundary as typed values rather than preformatted strings. Temporal values in particular must preserve database type, precision, source offset, and zone semantics; see [Time zone handling](docs/timezone-design.md).
 
@@ -44,7 +42,9 @@ Codex conversations will use ephemeral App Server threads and will not be persis
 - macOS 14 or newer
 - Swift 6.1 or newer, or a compatible Xcode toolchain
 
-Dependencies are resolved by Swift Package Manager. PostgreSQL access uses the open-source [PostgresNIO](https://github.com/vapor/postgres-nio) driver.
+Dependencies are resolved by Swift Package Manager. Database access uses the open-source [PostgresNIO](https://github.com/vapor/postgres-nio), [MySQLNIO](https://github.com/vapor/mysql-nio), and [SQLiteNIO](https://github.com/vapor/sqlite-nio) drivers.
+
+Cloud SQL, SSH, and Kubernetes paths use `cloud-sql-proxy`, OpenSSH, and `kubectl`, respectively. Solnari discovers them from its launch `PATH`, common macOS installation directories, or the `SOLNARI_CLOUD_SQL_PROXY`, `SOLNARI_SSH`, and `SOLNARI_KUBECTL` environment variables.
 
 ## Run
 
@@ -62,19 +62,20 @@ swift test
 git diff --check
 ```
 
-The PostgreSQL integration test is skipped unless a test server is configured. Set `SOLNARI_TEST_POSTGRES_HOST` and, when needed, `SOLNARI_TEST_POSTGRES_PORT`, `SOLNARI_TEST_POSTGRES_USER`, `SOLNARI_TEST_POSTGRES_PASSWORD`, `SOLNARI_TEST_POSTGRES_DATABASE`, and `SOLNARI_TEST_POSTGRES_TLS`.
+Live PostgreSQL and MySQL integration tests are skipped unless test servers are configured. Use the `SOLNARI_TEST_POSTGRES_*` or `SOLNARI_TEST_MYSQL_*` variables documented in [Backend architecture](docs/backend-architecture.md). SQLite and isolated fake-CLI transport tests run on every `swift test`.
 
 ## Roadmap
 
-The Direct PostgreSQL path currently supports:
+The current backend slice supports:
 
-1. test and establish a connection;
+1. test and establish PostgreSQL, MySQL, and SQLite connections;
 2. persist named profiles while keeping passwords in Keychain;
-3. introspect user schemas, tables, views, and column counts;
-4. execute typed queries and feed arbitrary result columns into the grid and export pipeline;
-5. apply display-time-zone rules without changing canonical source values.
+3. open Direct TCP, Cloud SQL Proxy, SSH forwarding, and temporary Kubernetes relay paths;
+4. introspect user schemas, tables, views, and column counts;
+5. execute typed queries and feed arbitrary result columns into the grid and export pipeline;
+6. apply display-time-zone rules without changing canonical source values.
 
-Query cancellation and transaction controls are next for PostgreSQL. Cloud SQL, SSH, Kubernetes, MySQL, SQLite, and Codex integration will follow behind the same adapter and transport boundaries.
+Query cancellation, transaction controls, schema text-setting audits, and Codex integration remain on the roadmap.
 
 ## Contributing
 
