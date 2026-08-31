@@ -18,24 +18,11 @@ struct SolnariMark: View {
   var size: CGFloat = 30
 
   var body: some View {
-    ZStack {
-      RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-        .fill(
-          LinearGradient(
-            colors: [SolnariTheme.indigoSoft, SolnariTheme.indigo],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          )
-        )
-
-      Image(systemName: "leaf.fill")
-        .font(.system(size: size * 0.46, weight: .semibold))
-        .foregroundStyle(.white)
-        .rotationEffect(.degrees(-12))
-    }
-    .frame(width: size, height: size)
-    .shadow(color: SolnariTheme.indigo.opacity(0.22), radius: 8, y: 3)
-    .accessibilityLabel("Solnari")
+    Image("SolnariIcon", bundle: SolnariResources.bundle)
+      .resizable()
+      .interpolation(.high)
+      .frame(width: size, height: size)
+      .accessibilityLabel("Solnari")
   }
 }
 

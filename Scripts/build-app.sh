@@ -31,10 +31,9 @@ if [[ -d "$resource_bundle" ]]; then
     "$staged_application/Contents/Resources/Solnari_Solnari.bundle"
 fi
 
-icon_source="$icon_directory/Solnari-1024.png"
+icon_source="$repository_root/Sources/Solnari/Resources/SolnariIcon.png"
 iconset="$icon_directory/Solnari.iconset"
 mkdir -p "$iconset"
-xcrun swift "$repository_root/Scripts/generate-app-icon.swift" "$icon_source"
 for specification in \
   '16 icon_16x16.png' \
   '32 icon_16x16@2x.png' \

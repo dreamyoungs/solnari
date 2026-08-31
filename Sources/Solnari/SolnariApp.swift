@@ -81,6 +81,11 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard isPrimaryInstance else { return }
     NSApp.setActivationPolicy(.regular)
+    if let iconURL = Bundle.main.url(forResource: "Solnari", withExtension: "icns"),
+      let icon = NSImage(contentsOf: iconURL)
+    {
+      NSApp.applicationIconImage = icon
+    }
     DispatchQueue.main.async { self.showMainWindow() }
   }
 

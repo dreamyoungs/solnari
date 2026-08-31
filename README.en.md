@@ -106,14 +106,14 @@ Build a local Release configuration app:
 open .build/app/release/Solnari.app
 ```
 
-The local bundle is ad-hoc signed for development. Public releases will require Developer ID
-signing and Apple notarization. Depending on the selected path, `cloud-sql-proxy`, OpenSSH, or
-`kubectl` is also required.
+The local bundle uses the [Solnari flower icon](Sources/Solnari/Resources/SolnariIcon.png) and an ad-hoc
+development signature. Public releases will require Developer ID signing and Apple notarization.
+Depending on the selected path, `cloud-sql-proxy`, OpenSSH, or `kubectl` is also required.
 
 ## Verify
 
 ```bash
-swift format lint --recursive --strict Sources Tests Scripts/generate-app-icon.swift
+swift format lint --recursive --strict Sources Tests
 swift test
 ./Scripts/build-app.sh release
 git diff --check

@@ -128,7 +128,8 @@ Release 설정의 로컬 앱을 만들려면 다음을 실행합니다.
 open .build/app/release/Solnari.app
 ```
 
-이 앱은 로컬 개발용 ad-hoc 서명을 사용합니다. 공개 Release에는 Developer ID 서명과
+이 앱은 [솔나리 꽃 아이콘](Sources/Solnari/Resources/SolnariIcon.png)과 로컬 개발용 ad-hoc
+서명을 사용합니다. 공개 Release에는 Developer ID 서명과
 Apple notarization을 별도로 적용할 예정입니다.
 
 빠른 개발 반복에는 `swift run Solnari`도 사용할 수 있습니다. 최초 번들 실행 시 이전
@@ -138,7 +139,7 @@ Keychain 비밀번호는 같은 opaque profile ID에 연결된 상태로 유지�
 ## 검증
 
 ```bash
-swift format lint --recursive --strict Sources Tests Scripts/generate-app-icon.swift
+swift format lint --recursive --strict Sources Tests
 swift test
 ./Scripts/build-app.sh release
 git diff --check
