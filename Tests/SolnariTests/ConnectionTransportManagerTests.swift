@@ -47,11 +47,28 @@ struct ConnectionTransportManagerTests {
     _ = try await manager.open(profile: kubernetes)
     await manager.close(profileID: kubernetes.id)
 
+    let existingResource = profile(
+      transport: .kubernetes,
+      kubernetes: KubernetesConfiguration(
+        context: "test",
+        namespace: "database-access",
+        relayImage: "",
+        connectionMode: .existingResource,
+        resourceKind: .service,
+        resourceName: "admin-db-proxy",
+        remotePort: 5432
+      )
+    )
+    _ = try await manager.open(profile: existingResource)
+    await manager.close(profileID: existingResource.id)
+
     let logURL = URL(fileURLWithPath: executable.path + ".log")
     let log = try String(contentsOf: logURL, encoding: .utf8)
     #expect(log.contains("--auto-iam-authn"))
     #expect(log.contains("ubuntu@bastion"))
     #expect(log.contains("delete pod/solnari-relay-"))
+    #expect(log.contains("port-forward service/admin-db-proxy"))
+    #expect(log.contains("--address=127.0.0.1"))
   }
 
   private func profile(

@@ -80,4 +80,35 @@ struct SQLiteBackendIntegrationTests {
       }
     }
   }
+
+  @Test("SQLite 읽기 전용 세션은 클라이언트 검사를 우회해도 쓰기를 거부한다")
+  func sqliteReadOnlySessionRejectsWrites() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SolnariReadOnlyTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let profile = ConnectionProfile(
+      name: "읽기 전용 SQLite",
+      database: directory.appendingPathComponent("readonly.sqlite").path,
+      engine: .sqlite,
+      transport: .direct,
+      host: "",
+      port: 0,
+      username: "",
+      requiresTLS: false,
+      clientEncoding: "Automatic",
+      accessLevel: .readOnly
+    )
+    let backend = SQLiteBackend()
+
+    _ = try await backend.connect(profile: profile)
+    _ = try await backend.execute(profileID: profile.id, sql: "SELECT 1")
+    await #expect(throws: (any Error).self) {
+      try await backend.execute(
+        profileID: profile.id,
+        sql: "CREATE TABLE forbidden (id INTEGER PRIMARY KEY)"
+      )
+    }
+    await backend.disconnect(profileID: profile.id)
+  }
 }

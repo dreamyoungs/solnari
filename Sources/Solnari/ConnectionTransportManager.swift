@@ -108,6 +108,29 @@ enum TransportCommandBuilder {
     )
   }
 
+  static func kubernetesExistingResourceForward(
+    executable: String,
+    configuration: KubernetesConfiguration,
+    localPort: Int
+  ) throws -> TransportCommand {
+    guard let resourceKind = configuration.resourceKind,
+      let resourceName = configuration.resourceName?.trimmingCharacters(
+        in: .whitespacesAndNewlines),
+      !resourceName.isEmpty,
+      let remotePort = configuration.remotePort,
+      (1...65_535).contains(remotePort)
+    else {
+      throw SolnariDatabaseError.incompleteConnection
+    }
+    return TransportCommand(
+      executable: executable,
+      arguments: kubePrefix(configuration) + [
+        "port-forward", "\(resourceKind.commandName)/\(resourceName)",
+        "\(localPort):\(remotePort)", "--address=127.0.0.1",
+      ]
+    )
+  }
+
   private static func kubePrefix(_ configuration: KubernetesConfiguration) -> [String] {
     ["--context", configuration.context, "--namespace", configuration.namespace]
   }
@@ -245,6 +268,52 @@ actor ConnectionTransportManager {
       try executables.kubectl
       ?? ExecutableResolver.resolve(name: "kubectl", environmentKey: "SOLNARI_KUBECTL")
     let localPort = try Self.availablePort()
+    switch configuration.effectiveConnectionMode {
+    case .existingResource:
+      return try await openExistingKubernetesResource(
+        profileID: profile.id,
+        configuration: configuration,
+        executable: executable,
+        localPort: localPort
+      )
+    case .temporaryRelay:
+      return try await openTemporaryKubernetesRelay(
+        profile: profile,
+        configuration: configuration,
+        executable: executable,
+        localPort: localPort
+      )
+    }
+  }
+
+  private func openExistingKubernetesResource(
+    profileID: UUID,
+    configuration: KubernetesConfiguration,
+    executable: String,
+    localPort: Int
+  ) async throws -> TransportEndpoint {
+    let forward = try start(
+      TransportCommandBuilder.kubernetesExistingResourceForward(
+        executable: executable,
+        configuration: configuration,
+        localPort: localPort
+      ))
+    sessions[profileID] = Session(processes: [forward], cleanup: nil)
+    do {
+      try await waitUntilListening(port: localPort, process: forward)
+      return TransportEndpoint(host: "127.0.0.1", port: localPort)
+    } catch {
+      await close(profileID: profileID)
+      throw error
+    }
+  }
+
+  private func openTemporaryKubernetesRelay(
+    profile: ConnectionProfile,
+    configuration: KubernetesConfiguration,
+    executable: String,
+    localPort: Int
+  ) async throws -> TransportEndpoint {
     let relayPort = profile.engine == .mysql ? 13_306 : 15_432
     let relayName = "solnari-relay-\(profile.id.uuidString.lowercased().prefix(8))"
     let cleanup = TransportCommandBuilder.kubernetesDelete(

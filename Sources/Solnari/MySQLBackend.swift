@@ -123,6 +123,9 @@ actor MySQLBackend {
     ).get()
     do {
       _ = try await connection.simpleQuery("SET time_zone = '+00:00'").get()
+      if profile.effectiveAccessLevel == .readOnly {
+        _ = try await connection.simpleQuery("SET SESSION transaction_read_only = ON").get()
+      }
       if profile.clientEncoding != "Automatic" {
         let supported = ["utf8mb4", "euckr", "latin1"]
         guard supported.contains(profile.clientEncoding) else {

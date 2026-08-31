@@ -69,6 +69,62 @@ enum ConnectionStatus: String, Hashable, Codable, Sendable {
   }
 }
 
+enum ConnectionSecurityPolicy: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
+  case localDevelopment = "Local development"
+  case standard = "Standard"
+  case organizationManaged = "Organization managed"
+
+  var id: String { rawValue }
+
+  var symbol: String {
+    switch self {
+    case .localDevelopment: "hammer.fill"
+    case .standard: "lock.shield.fill"
+    case .organizationManaged: "building.2.crop.circle.fill"
+    }
+  }
+
+  var tint: Color {
+    switch self {
+    case .localDevelopment: SolnariTheme.orange
+    case .standard: SolnariTheme.mint
+    case .organizationManaged: SolnariTheme.indigo
+    }
+  }
+
+  static var userSelectable: [ConnectionSecurityPolicy] {
+    [.localDevelopment, .standard]
+  }
+}
+
+enum DatabaseAccessLevel: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
+  case readOnly = "Read-only"
+  case readWrite = "Read / Write"
+  case migration = "Migration"
+
+  var id: String { rawValue }
+
+  var symbol: String {
+    switch self {
+    case .readOnly: "eye.fill"
+    case .readWrite: "pencil.and.outline"
+    case .migration: "arrow.triangle.2.circlepath"
+    }
+  }
+
+  var tint: Color {
+    switch self {
+    case .readOnly: SolnariTheme.mint
+    case .readWrite: SolnariTheme.orange
+    case .migration: .red
+    }
+  }
+
+  static var userSelectable: [DatabaseAccessLevel] {
+    [.readOnly, .readWrite]
+  }
+}
+
 struct CloudSQLConfiguration: Hashable, Codable, Sendable {
   var project: String
   var region: String
@@ -84,10 +140,52 @@ struct SSHConfiguration: Hashable, Codable, Sendable {
   var username: String
 }
 
+enum KubernetesConnectionMode: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
+  case existingResource = "Existing resource"
+  case temporaryRelay = "Temporary relay"
+
+  var id: String { rawValue }
+}
+
+enum KubernetesResourceKind: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
+  case service = "Service"
+  case pod = "Pod"
+
+  var id: String { rawValue }
+
+  var commandName: String { rawValue.lowercased() }
+}
+
 struct KubernetesConfiguration: Hashable, Codable, Sendable {
   var context: String
   var namespace: String
   var relayImage: String
+  var connectionMode: KubernetesConnectionMode?
+  var resourceKind: KubernetesResourceKind?
+  var resourceName: String?
+  var remotePort: Int?
+
+  var effectiveConnectionMode: KubernetesConnectionMode {
+    connectionMode ?? .temporaryRelay
+  }
+
+  init(
+    context: String,
+    namespace: String,
+    relayImage: String,
+    connectionMode: KubernetesConnectionMode? = nil,
+    resourceKind: KubernetesResourceKind? = nil,
+    resourceName: String? = nil,
+    remotePort: Int? = nil
+  ) {
+    self.context = context
+    self.namespace = namespace
+    self.relayImage = relayImage
+    self.connectionMode = connectionMode
+    self.resourceKind = resourceKind
+    self.resourceName = resourceName
+    self.remotePort = remotePort
+  }
 }
 
 struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
@@ -112,6 +210,16 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
   var preferredCharacterSet: String?
   var preferredCollation: String?
   var auditTextSettings: Bool?
+  var securityPolicy: ConnectionSecurityPolicy?
+  var accessLevel: DatabaseAccessLevel?
+
+  var effectiveSecurityPolicy: ConnectionSecurityPolicy {
+    securityPolicy ?? .localDevelopment
+  }
+
+  var effectiveAccessLevel: DatabaseAccessLevel {
+    accessLevel ?? .readWrite
+  }
 
   var subtitle: String {
     switch transport {
@@ -143,7 +251,9 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
     kubernetes: KubernetesConfiguration? = nil,
     preferredCharacterSet: String? = nil,
     preferredCollation: String? = nil,
-    auditTextSettings: Bool? = nil
+    auditTextSettings: Bool? = nil,
+    securityPolicy: ConnectionSecurityPolicy? = nil,
+    accessLevel: DatabaseAccessLevel? = nil
   ) {
     self.id = id
     self.name = name
@@ -166,6 +276,8 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
     self.preferredCharacterSet = preferredCharacterSet
     self.preferredCollation = preferredCollation
     self.auditTextSettings = auditTextSettings
+    self.securityPolicy = securityPolicy
+    self.accessLevel = accessLevel
   }
 
   func persisted() -> ConnectionProfile {
@@ -258,11 +370,17 @@ struct ConnectionDraft: Equatable, Sendable {
   var sshUser = ""
   var kubeContext = ""
   var namespace = "default"
+  var kubernetesMode: KubernetesConnectionMode = .existingResource
+  var kubernetesResourceKind: KubernetesResourceKind = .service
+  var kubernetesResourceName = ""
+  var kubernetesRemotePort = "5432"
   var relayImage = "alpine/socat:1.8.0.3"
   var clientEncoding = "Automatic"
   var preferredCharacterSet = "Database default"
   var preferredCollation = "Database default"
   var auditTextSettings = true
+  var securityPolicy: ConnectionSecurityPolicy = .localDevelopment
+  var accessLevel: DatabaseAccessLevel = .readWrite
 
   var supportsSelectedTransport: Bool {
     engine != .sqlite || transport == .direct
@@ -273,7 +391,9 @@ struct ConnectionDraft: Equatable, Sendable {
   }
 
   var isValid: Bool {
-    guard !name.trimmed.isEmpty, supportsSelectedTransport else { return false }
+    guard !name.trimmed.isEmpty, supportsSelectedTransport, isUserManagedPolicyValid else {
+      return false
+    }
     if engine == .sqlite {
       return !database.trimmed.isEmpty
     }
@@ -289,8 +409,14 @@ struct ConnectionDraft: Equatable, Sendable {
     case .ssh:
       return !sshHost.trimmed.isEmpty && !sshUser.trimmed.isEmpty && Self.isValidPort(sshPort)
     case .kubernetes:
-      return !kubeContext.trimmed.isEmpty && !namespace.trimmed.isEmpty
-        && !relayImage.trimmed.isEmpty
+      guard !kubeContext.trimmed.isEmpty, !namespace.trimmed.isEmpty else { return false }
+      switch kubernetesMode {
+      case .existingResource:
+        return !kubernetesResourceName.trimmed.isEmpty
+          && Self.isValidPort(kubernetesRemotePort)
+      case .temporaryRelay:
+        return !relayImage.trimmed.isEmpty
+      }
     }
   }
 
@@ -331,16 +457,38 @@ struct ConnectionDraft: Equatable, Sendable {
         ? KubernetesConfiguration(
           context: kubeContext.trimmed,
           namespace: namespace.trimmed,
-          relayImage: relayImage.trimmed
+          relayImage: relayImage.trimmed,
+          connectionMode: kubernetesMode,
+          resourceKind: kubernetesMode == .existingResource ? kubernetesResourceKind : nil,
+          resourceName: kubernetesMode == .existingResource
+            ? kubernetesResourceName.trimmed : nil,
+          remotePort: kubernetesMode == .existingResource
+            ? Int(kubernetesRemotePort) : nil
         ) : nil,
       preferredCharacterSet: preferredCharacterSet,
       preferredCollation: preferredCollation,
-      auditTextSettings: auditTextSettings
+      auditTextSettings: auditTextSettings,
+      securityPolicy: securityPolicy,
+      accessLevel: accessLevel
     )
+  }
+
+  private var isUserManagedPolicyValid: Bool {
+    guard securityPolicy != .organizationManaged, accessLevel != .migration else { return false }
+    if securityPolicy == .standard, transport == .direct, engine != .sqlite,
+      !Self.isLoopbackHost(host), !requiresTLS
+    {
+      return false
+    }
+    return true
   }
 
   private static func isValidPort(_ value: String) -> Bool {
     Int(value).map { (1...65_535).contains($0) } == true
+  }
+
+  private static func isLoopbackHost(_ value: String) -> Bool {
+    ["localhost", "127.0.0.1", "::1"].contains(value.trimmed.lowercased())
   }
 }
 
@@ -368,6 +516,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case missingExecutable(String)
   case transportFailed(String)
   case transportTimedOut
+  case queryNotAllowedForAccessLevel
   case keychain(OSStatus)
 
   var errorDescription: String? {
@@ -382,6 +531,8 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .missingExecutable(let name): "Install or configure the required \(name) command."
     case .transportFailed(let message): "The connection path failed: \(message)"
     case .transportTimedOut: "The local connection path did not become ready in time."
+    case .queryNotAllowedForAccessLevel:
+      "This SQL is not allowed by the connection's access level."
     case .keychain(let status): "macOS Keychain returned error \(status)."
     }
   }

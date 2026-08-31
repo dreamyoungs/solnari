@@ -27,6 +27,9 @@ actor SQLiteBackend {
     let connection = try await open(profile)
     sessions[profile.id] = connection
     do {
+      if profile.effectiveAccessLevel == .readOnly {
+        _ = try await connection.query("PRAGMA query_only = ON")
+      }
       return try await fetchMetadata(using: connection, profile: profile)
     } catch {
       sessions.removeValue(forKey: profile.id)

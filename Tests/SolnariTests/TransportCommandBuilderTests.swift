@@ -55,6 +55,32 @@ struct TransportCommandBuilderTests {
     #expect(delete.arguments.contains("--ignore-not-found=true"))
   }
 
+  @Test("기존 Kubernetes 리소스는 생성·삭제 없이 loopback port-forward만 구성한다")
+  func existingKubernetesResourceArguments() throws {
+    let configuration = KubernetesConfiguration(
+      context: "production",
+      namespace: "db-access",
+      relayImage: "",
+      connectionMode: .existingResource,
+      resourceKind: .service,
+      resourceName: "admin-db-proxy",
+      remotePort: 5432
+    )
+    let command = try TransportCommandBuilder.kubernetesExistingResourceForward(
+      executable: "/kubectl",
+      configuration: configuration,
+      localPort: 15_003
+    )
+
+    #expect(
+      command.arguments == [
+        "--context", "production", "--namespace", "db-access",
+        "port-forward", "service/admin-db-proxy", "15003:5432", "--address=127.0.0.1",
+      ])
+    #expect(!command.arguments.contains("run"))
+    #expect(!command.arguments.contains("delete"))
+  }
+
   private func networkProfile(
     transport: ConnectionTransport,
     cloudSQL: CloudSQLConfiguration? = nil,

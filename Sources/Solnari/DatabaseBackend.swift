@@ -6,6 +6,7 @@ actor DatabaseBackend {
   private let sqlite: SQLiteBackend
   private let transports: ConnectionTransportManager
   private var connectedEngines: [UUID: DatabaseEngine] = [:]
+  private var connectedProfiles: [UUID: ConnectionProfile] = [:]
 
   init(
     postgresql: PostgreSQLBackend = PostgreSQLBackend(),
@@ -41,6 +42,7 @@ actor DatabaseBackend {
     do {
       let metadata = try await connectEngine(resolved, password: password)
       connectedEngines[profile.id] = profile.engine
+      connectedProfiles[profile.id] = profile
       return metadata
     } catch {
       await transports.close(profileID: profile.id)
@@ -49,6 +51,7 @@ actor DatabaseBackend {
   }
 
   func disconnect(profileID: UUID) async {
+    connectedProfiles.removeValue(forKey: profileID)
     let engine = connectedEngines.removeValue(forKey: profileID)
     switch engine {
     case .postgresql: await postgresql.disconnect(profileID: profileID)
@@ -79,10 +82,14 @@ actor DatabaseBackend {
   }
 
   func execute(profileID: UUID, sql: String) async throws -> QueryExecutionResult {
+    guard let profile = connectedProfiles[profileID] else {
+      throw SolnariDatabaseError.notConnected
+    }
+    try QuerySafetyPolicy.validate(sql: sql, accessLevel: profile.effectiveAccessLevel)
     switch try engine(for: profileID) {
-    case .postgresql: try await postgresql.execute(profileID: profileID, sql: sql)
-    case .mysql: try await mysql.execute(profileID: profileID, sql: sql)
-    case .sqlite: try await sqlite.execute(profileID: profileID, sql: sql)
+    case .postgresql: return try await postgresql.execute(profileID: profileID, sql: sql)
+    case .mysql: return try await mysql.execute(profileID: profileID, sql: sql)
+    case .sqlite: return try await sqlite.execute(profileID: profileID, sql: sql)
     }
   }
 

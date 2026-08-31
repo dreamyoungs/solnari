@@ -14,6 +14,8 @@ wire protocols and schema queries remain isolated.
   schema discovery, and dynamic result decoding.
 - `ConnectionTransportManager` starts local Cloud SQL Proxy, SSH forwarding, or Kubernetes
   port-forward processes and tears them down with the database session.
+- `QuerySafetyPolicy` rejects non-read statements before they reach a read-only session; each
+  engine also configures its database connection to reject writes.
 - `QueryTableData` crosses the backend/UI boundary with typed cells and arbitrary columns.
 
 Passwords never appear in `ConnectionProfile`, serialized preferences, diagnostics, or query
@@ -62,6 +64,8 @@ Copy and export use canonical values by default. See [Time zone handling](timezo
 | SQLite | Available | Not applicable | Not applicable | Not applicable |
 
 SQLite's unavailable network paths remain visible but disabled so the support boundary is explicit.
+Kubernetes offers a preferred existing Service/Pod port-forward that creates no cluster resource,
+plus a separately labeled experimental temporary relay for environments that explicitly allow it.
 
 ## Integration verification
 

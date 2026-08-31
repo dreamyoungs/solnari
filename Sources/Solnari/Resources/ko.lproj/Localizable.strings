@@ -89,6 +89,17 @@
 "Engine" = "엔진";
 "Network path" = "네트워크 경로";
 "Connection details" = "연결 정보";
+"Safety & access" = "안전 및 접근 권한";
+"Security policy" = "보안 정책";
+"Database access" = "데이터베이스 접근";
+"Standard" = "표준";
+"Organization managed" = "조직 관리형";
+"Read-only" = "읽기 전용";
+"Migration" = "마이그레이션";
+"Standard policy requires TLS for a remote direct connection. Loopback development remains available without TLS." = "표준 정책의 원격 직접 연결에는 TLS가 필요합니다. loopback 개발 연결은 TLS 없이 사용할 수 있습니다.";
+"Read-only validates SQL before execution and configures the database session to reject writes." = "읽기 전용은 실행 전에 SQL을 검사하고 데이터베이스 세션도 쓰기를 거부하도록 설정합니다.";
+"Read/write allows changing SQL. The database role remains the final permission boundary." = "읽기/쓰기는 변경 SQL을 허용하며 실제 최종 권한은 데이터베이스 role이 결정합니다.";
+"Migration access is reserved for a separate reviewed workflow." = "마이그레이션 접근은 별도로 검토되는 workflow용으로 예약되어 있습니다.";
 "Text & collation" = "문자 및 정렬 규칙";
 "Client encoding" = "클라이언트 인코딩";
 "Table character set" = "테이블 문자셋";
@@ -124,9 +135,20 @@
 "Advanced…" = "고급…";
 "Kubernetes context" = "Kubernetes 컨텍스트";
 "Namespace" = "네임스페이스";
+"Existing resource" = "기존 리소스";
+"Temporary relay" = "임시 릴레이";
+"Resource type" = "리소스 종류";
+"Resource name" = "리소스 이름";
+"Remote port" = "원격 포트";
+"Service" = "서비스";
+"Pod" = "Pod";
 "Relay image" = "릴레이 이미지";
 "Kubernetes relay preview" = "Kubernetes 릴레이 미리보기";
 "The relay pod is removed automatically when the session closes." = "세션이 종료되면 릴레이 Pod가 자동으로 삭제됩니다.";
+"Existing Kubernetes resource" = "기존 Kubernetes 리소스";
+"Experimental Kubernetes relay" = "실험적 Kubernetes 릴레이";
+"Solnari only opens a port-forward and does not create or delete resources." = "리소스를 생성하거나 삭제하지 않고 port-forward만 엽니다.";
+"Solnari creates and removes a temporary Pod. Additional RBAC is required." = "임시 Pod를 생성하고 삭제하므로 추가 RBAC 권한이 필요합니다.";
 "Credentials stay on this Mac" = "인증 정보는 이 Mac에만 저장됩니다";
 "Passwords are stored in Keychain. Codex receives schema metadata and proposed SQL, never connection credentials." = "비밀번호는 키체인에 저장됩니다. Codex에는 스키마 메타데이터와 제안 SQL만 전달되며 연결 인증 정보는 전달되지 않습니다.";
 "Test the path before saving." = "저장하기 전에 연결 경로를 테스트하세요.";
@@ -177,6 +199,7 @@
 "Cloud SQL Auth Proxy opens a local secure endpoint and refreshes short-lived credentials automatically." = "Cloud SQL Auth Proxy가 안전한 로컬 엔드포인트를 열고 단기 인증 정보를 자동으로 갱신합니다.";
 "Solnari forwards a local port through your SSH agent without exposing the database publicly." = "데이터베이스를 외부에 공개하지 않고 SSH 에이전트를 통해 로컬 포트를 전달합니다.";
 "Solnari creates a temporary relay pod and port-forward, then removes the pod when the session closes." = "임시 릴레이 Pod와 포트 포워딩을 만들고 세션 종료 시 Pod를 삭제합니다.";
+"Solnari port-forwards an existing Service or Pod without creating or deleting cluster resources." = "클러스터 리소스를 생성하거나 삭제하지 않고 기존 Service 또는 Pod에 port-forward합니다.";
 "Drag to resize. Double-click to reset." = "드래그하여 크기를 조절하고 이중 클릭하여 초기화합니다.";
 
 "Copy as" = "다음 형식으로 복사";
@@ -211,3 +234,4 @@
 "The database returned an unexpected response." = "데이터베이스가 예상하지 못한 응답을 반환했습니다.";
 "Fill in every required connection field." = "필수 연결 정보를 모두 입력해 주세요.";
 "The local connection path did not become ready in time." = "로컬 연결 경로가 제한 시간 안에 준비되지 않았습니다.";
+"This SQL is not allowed by the connection's access level." = "이 SQL은 현재 연결의 접근 등급에서 허용되지 않습니다.";

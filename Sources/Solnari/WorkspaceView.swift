@@ -65,6 +65,16 @@ struct WorkspaceView: View {
           connection.engine.rawValue, symbol: connection.engine.symbol, tint: connection.engine.tint
         )
         PillLabel(connection.transport.rawValue, symbol: connection.transport.symbol)
+        PillLabel(
+          connection.effectiveSecurityPolicy.rawValue,
+          symbol: connection.effectiveSecurityPolicy.symbol,
+          tint: connection.effectiveSecurityPolicy.tint
+        )
+        PillLabel(
+          connection.effectiveAccessLevel.rawValue,
+          symbol: connection.effectiveAccessLevel.symbol,
+          tint: connection.effectiveAccessLevel.tint
+        )
       }
 
       Spacer()

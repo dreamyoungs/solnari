@@ -129,6 +129,12 @@ actor PostgreSQLBackend {
       configuration.options.additionalStartupParameters.append(
         ("client_encoding", profile.clientEncoding))
     }
+    if profile.effectiveAccessLevel == .readOnly {
+      configuration.options.additionalStartupParameters.append(
+        ("default_transaction_read_only", "on"))
+      configuration.options.additionalStartupParameters.append(("statement_timeout", "30000"))
+      configuration.options.additionalStartupParameters.append(("lock_timeout", "5000"))
+    }
 
     let client = PostgresClient(configuration: configuration)
     let runTask = Task { await client.run() }

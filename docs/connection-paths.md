@@ -30,7 +30,15 @@ SSH usernames are separate profile fields. Authentication uses `~/.ssh`, SSH con
 the system agent; Solnari does not copy or persist private keys. Set `SOLNARI_SSH` only when a
 nonstandard SSH executable is required.
 
-## Kubernetes relay
+## Kubernetes
+
+The preferred Kubernetes mode opens `kubectl port-forward` to an explicitly selected, existing
+Service or Pod. Solnari passes the context, namespace, resource kind, resource name, remote port,
+and `--address=127.0.0.1` as separate arguments. It creates, changes, and deletes no cluster
+resource in this mode. The kubeconfig identity needs resource discovery access and
+`pods/portforward` for the selected target.
+
+### Experimental temporary relay
 
 For databases reachable from a Kubernetes cluster but not from the Mac, Solnari:
 
@@ -40,7 +48,8 @@ For databases reachable from a Kubernetes cluster but not from the Mac, Solnari:
 4. connects the database driver through that endpoint;
 5. terminates port-forward and deletes the relay Pod on test completion, disconnect, or failure.
 
-The relay image is visible and editable in the connection form. The kubeconfig identity must be
+The temporary relay is explicitly labeled experimental. Its image is visible and editable in the
+connection form. The kubeconfig identity must be
 allowed to create, watch, port-forward, and delete Pods in the namespace. Set `SOLNARI_KUBECTL` for
 a nonstandard binary path.
 

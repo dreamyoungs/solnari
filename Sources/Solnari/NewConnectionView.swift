@@ -40,6 +40,7 @@ struct NewConnectionView: View {
           identitySection
           transportSection
           connectionDetails
+          safetySection
           textAndLocaleSection
           securityNote
         }
@@ -52,11 +53,16 @@ struct NewConnectionView: View {
     .background(SolnariTheme.panel)
     .onChange(of: draft.engine) {
       switch draft.engine {
-      case .postgresql: draft.port = "5432"
-      case .mysql: draft.port = "3306"
+      case .postgresql:
+        draft.port = "5432"
+        draft.kubernetesRemotePort = "5432"
+      case .mysql:
+        draft.port = "3306"
+        draft.kubernetesRemotePort = "3306"
       case .sqlite:
         draft.port = ""
         draft.transport = .direct
+        draft.securityPolicy = .localDevelopment
       }
       draft.clientEncoding = "Automatic"
       draft.preferredCharacterSet = "Database default"
@@ -64,6 +70,9 @@ struct NewConnectionView: View {
       applyResolvedADCIdentity()
     }
     .onChange(of: draft.transport) {
+      if draft.transport != .direct {
+        draft.securityPolicy = .standard
+      }
       Task { await resolveADCIdentityIfNeeded() }
     }
     .onChange(of: draft.useIAM) {
@@ -307,27 +316,73 @@ struct NewConnectionView: View {
 
   private var kubernetesFields: some View {
     VStack(spacing: 14) {
+      Picker("", selection: $draft.kubernetesMode) {
+        ForEach(KubernetesConnectionMode.allCases) { mode in
+          Text(settings.text(mode.rawValue)).tag(mode)
+        }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+
       HStack(spacing: 14) {
         labeledField("Kubernetes context", placeholder: "nks-prod", text: $draft.kubeContext)
         labeledField("Namespace", placeholder: "db-access", text: $draft.namespace)
       }
-      HStack(spacing: 14) {
-        labeledField("Database host", placeholder: "postgres.private", text: $draft.host)
-        labeledField("Port", placeholder: defaultPort, text: $draft.port, width: 110)
+
+      if draft.kubernetesMode == .existingResource {
+        HStack(spacing: 14) {
+          VStack(alignment: .leading, spacing: 7) {
+            fieldLabel("Resource type")
+            Picker("", selection: $draft.kubernetesResourceKind) {
+              ForEach(KubernetesResourceKind.allCases) { kind in
+                Text(settings.text(kind.rawValue)).tag(kind)
+              }
+            }
+            .labelsHidden()
+            .frame(width: 130)
+          }
+          labeledField(
+            "Resource name", placeholder: "admin-db-proxy",
+            text: $draft.kubernetesResourceName)
+          labeledField(
+            "Remote port", placeholder: defaultPort,
+            text: $draft.kubernetesRemotePort, width: 110)
+        }
+        databaseCredentialFields
+        passwordField
+      } else {
+        HStack(spacing: 14) {
+          labeledField("Database host", placeholder: "postgres.private", text: $draft.host)
+          labeledField("Port", placeholder: defaultPort, text: $draft.port, width: 110)
+        }
+        databaseCredentialFields
+        passwordField
+        labeledField("Relay image", placeholder: "alpine/socat:1.8.0.3", text: $draft.relayImage)
       }
-      databaseCredentialFields
-      passwordField
-      labeledField("Relay image", placeholder: "alpine/socat:1.8.0.3", text: $draft.relayImage)
 
       HStack(spacing: 10) {
-        Image(systemName: "shippingbox.fill")
-          .foregroundStyle(SolnariTheme.indigo)
+        Image(
+          systemName: draft.kubernetesMode == .existingResource
+            ? "checkmark.shield.fill" : "shippingbox.fill"
+        )
+        .foregroundStyle(SolnariTheme.indigo)
         VStack(alignment: .leading, spacing: 2) {
-          Text(settings.text("Kubernetes relay preview"))
-            .font(.system(size: 12, weight: .medium))
-          Text(settings.text("The relay pod is removed automatically when the session closes."))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+          Text(
+            settings.text(
+              draft.kubernetesMode == .existingResource
+                ? "Existing Kubernetes resource" : "Experimental Kubernetes relay"
+            )
+          )
+          .font(.system(size: 12, weight: .medium))
+          Text(
+            settings.text(
+              draft.kubernetesMode == .existingResource
+                ? "Solnari only opens a port-forward and does not create or delete resources."
+                : "Solnari creates and removes a temporary Pod. Additional RBAC is required."
+            )
+          )
+          .font(.caption2)
+          .foregroundStyle(.secondary)
         }
         Spacer()
         PillLabel("pods/portforward", symbol: "checkmark", tint: SolnariTheme.mint)
@@ -361,8 +416,44 @@ struct NewConnectionView: View {
       SolnariTheme.mint.opacity(0.065), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
+  private var safetySection: some View {
+    formSection(number: "04", title: "Safety & access") {
+      VStack(spacing: 14) {
+        HStack(alignment: .top, spacing: 14) {
+          VStack(alignment: .leading, spacing: 7) {
+            fieldLabel("Security policy")
+            Picker("", selection: $draft.securityPolicy) {
+              ForEach(ConnectionSecurityPolicy.userSelectable) { policy in
+                Label(settings.text(policy.rawValue), systemImage: policy.symbol).tag(policy)
+              }
+            }
+            .labelsHidden()
+          }
+          VStack(alignment: .leading, spacing: 7) {
+            fieldLabel("Database access")
+            Picker("", selection: $draft.accessLevel) {
+              ForEach(DatabaseAccessLevel.userSelectable) { level in
+                Label(settings.text(level.rawValue), systemImage: level.symbol).tag(level)
+              }
+            }
+            .labelsHidden()
+          }
+        }
+
+        HStack(alignment: .top, spacing: 9) {
+          Image(systemName: draft.accessLevel.symbol)
+            .foregroundStyle(draft.accessLevel.tint)
+          Text(settings.text(safetyExplanation))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          Spacer()
+        }
+      }
+    }
+  }
+
   private var textAndLocaleSection: some View {
-    formSection(number: "04", title: "Text & collation") {
+    formSection(number: "05", title: "Text & collation") {
       VStack(spacing: 14) {
         HStack(spacing: 14) {
           VStack(alignment: .leading, spacing: 7) {
@@ -486,10 +577,16 @@ struct NewConnectionView: View {
         (draft.engine.symbol, "Private database"),
       ]
     case .kubernetes:
-      [
-        ("laptopcomputer", "This Mac"), ("shippingbox.fill", "Kubernetes API"),
-        ("arrow.left.arrow.right.square", "Relay pod"), (draft.engine.symbol, "Private database"),
-      ]
+      draft.kubernetesMode == .existingResource
+        ? [
+          ("laptopcomputer", "This Mac"), ("shippingbox.fill", "Kubernetes API"),
+          ("checkmark.shield.fill", "Existing resource"),
+        ]
+        : [
+          ("laptopcomputer", "This Mac"), ("shippingbox.fill", "Kubernetes API"),
+          ("arrow.left.arrow.right.square", "Relay pod"),
+          (draft.engine.symbol, "Private database"),
+        ]
     }
   }
 
@@ -516,7 +613,9 @@ struct NewConnectionView: View {
     case .ssh:
       "Solnari forwards a local port through your SSH agent without exposing the database publicly."
     case .kubernetes:
-      "Solnari creates a temporary relay pod and port-forward, then removes the pod when the session closes."
+      draft.kubernetesMode == .existingResource
+        ? "Solnari port-forwards an existing Service or Pod without creating or deleting cluster resources."
+        : "Solnari creates a temporary relay pod and port-forward, then removes the pod when the session closes."
     }
   }
 
@@ -557,6 +656,30 @@ struct NewConnectionView: View {
     case .sqlite:
       "SQLite stores database text as UTF-8 or UTF-16 and applies BINARY, NOCASE, or RTRIM collations per column or expression."
     }
+  }
+
+  private var safetyExplanation: String {
+    if draft.securityPolicy == .standard, draft.transport == .direct,
+      draft.engine != .sqlite, !isLoopbackHost, !draft.requiresTLS
+    {
+      return "Standard policy requires TLS for a remote direct connection. "
+        + "Loopback development remains available without TLS."
+    }
+    switch draft.accessLevel {
+    case .readOnly:
+      return "Read-only validates SQL before execution and configures the database session "
+        + "to reject writes."
+    case .readWrite:
+      return "Read/write allows changing SQL. "
+        + "The database role remains the final permission boundary."
+    case .migration:
+      return "Migration access is reserved for a separate reviewed workflow."
+    }
+  }
+
+  private var isLoopbackHost: Bool {
+    ["localhost", "127.0.0.1", "::1"].contains(
+      draft.host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
   }
 
   private var sheetFooter: some View {
