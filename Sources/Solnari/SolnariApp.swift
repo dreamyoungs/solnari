@@ -3,20 +3,145 @@ import SwiftUI
 
 @MainActor
 private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
-  func applicationDidFinishLaunching(_ notification: Notification) {
-    NSApp.setActivationPolicy(.regular)
-    DispatchQueue.main.async {
-      NSApp.activate(ignoringOtherApps: true)
-      NSApp.windows.first?.makeKeyAndOrderFront(nil)
+  private let environment = AppEnvironment.shared
+  private let singleInstance = SingleInstanceCoordinator()
+  private var isPrimaryInstance = false
+  private var isTerminating = false
+
+  func applicationWillFinishLaunching(_ notification: Notification) {
+    do {
+      isPrimaryInstance = try singleInstance.acquire()
+    } catch {
+      NSAlert(error: error).runModal()
+      NSApp.terminate(nil)
+      return
     }
+
+    guard isPrimaryInstance else {
+      singleInstance.requestPrimaryActivation()
+      activateExistingApplication()
+      NSApp.terminate(nil)
+      return
+    }
+
+    DistributedNotificationCenter.default().addObserver(
+      self,
+      selector: #selector(activateFromSecondaryInstance),
+      name: SingleInstanceCoordinator.activationNotification,
+      object: nil,
+      suspensionBehavior: .deliverImmediately
+    )
+    DistributedNotificationCenter.default().addObserver(
+      self,
+      selector: #selector(suspendConnections),
+      name: Notification.Name("com.apple.screenIsLocked"),
+      object: nil,
+      suspensionBehavior: .deliverImmediately
+    )
+    DistributedNotificationCenter.default().addObserver(
+      self,
+      selector: #selector(resumeConnectionOperations),
+      name: Notification.Name("com.apple.screenIsUnlocked"),
+      object: nil,
+      suspensionBehavior: .deliverImmediately
+    )
+    let workspaceNotifications = NSWorkspace.shared.notificationCenter
+    workspaceNotifications.addObserver(
+      self,
+      selector: #selector(suspendConnections),
+      name: NSWorkspace.willSleepNotification,
+      object: nil
+    )
+    workspaceNotifications.addObserver(
+      self,
+      selector: #selector(suspendConnections),
+      name: NSWorkspace.screensDidSleepNotification,
+      object: nil
+    )
+    workspaceNotifications.addObserver(
+      self,
+      selector: #selector(suspendConnections),
+      name: NSWorkspace.sessionDidResignActiveNotification,
+      object: nil
+    )
+    workspaceNotifications.addObserver(
+      self,
+      selector: #selector(resumeConnectionOperations),
+      name: NSWorkspace.didWakeNotification,
+      object: nil
+    )
+    workspaceNotifications.addObserver(
+      self,
+      selector: #selector(resumeConnectionOperations),
+      name: NSWorkspace.sessionDidBecomeActiveNotification,
+      object: nil
+    )
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    guard isPrimaryInstance else { return }
+    NSApp.setActivationPolicy(.regular)
+    DispatchQueue.main.async { self.showMainWindow() }
+  }
+
+  func applicationShouldHandleReopen(
+    _ sender: NSApplication,
+    hasVisibleWindows flag: Bool
+  ) -> Bool {
+    showMainWindow()
+    return false
+  }
+
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard isPrimaryInstance else { return .terminateNow }
+    guard !isTerminating else { return .terminateLater }
+    isTerminating = true
+    Task {
+      await environment.workspace.suspendConnections()
+      singleInstance.release()
+      sender.reply(toApplicationShouldTerminate: true)
+    }
+    return .terminateLater
+  }
+
+  deinit {
+    DistributedNotificationCenter.default().removeObserver(self)
+    NSWorkspace.shared.notificationCenter.removeObserver(self)
+  }
+
+  @objc private func activateFromSecondaryInstance(_ notification: Notification) {
+    showMainWindow()
+  }
+
+  @objc private func suspendConnections(_ notification: Notification) {
+    Task { await environment.workspace.suspendConnections() }
+  }
+
+  @objc private func resumeConnectionOperations(_ notification: Notification) {
+    environment.workspace.resumeConnectionOperations()
+  }
+
+  private func showMainWindow() {
+    NSApp.activate(ignoringOtherApps: true)
+    if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
+      window.makeKeyAndOrderFront(nil)
+    }
+  }
+
+  private func activateExistingApplication() {
+    guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
+    let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+    NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+      .first(where: { $0.processIdentifier != currentProcessIdentifier })?
+      .activate(options: [.activateAllWindows])
   }
 }
 
 @main
 struct SolnariApp: App {
   @NSApplicationDelegateAdaptor(SolnariAppDelegate.self) private var appDelegate
-  @StateObject private var workspace = WorkspaceModel()
-  @StateObject private var settings = AppSettings()
+  @StateObject private var workspace = AppEnvironment.shared.workspace
+  @StateObject private var settings = AppEnvironment.shared.settings
 
   var body: some Scene {
     WindowGroup {

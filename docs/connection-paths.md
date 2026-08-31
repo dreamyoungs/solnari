@@ -13,8 +13,12 @@ optional in the profile. SQLite instead opens the selected absolute file path th
 Solnari runs Cloud SQL Auth Proxy v2 on a random loopback port and connects the database driver to
 that endpoint. The instance is addressed as `project:region:instance`. Application Default
 Credentials are resolved by the proxy; optional automatic IAM database authentication adds the
-proxy's `--auto-iam-authn` flag. The database password, when used, stays in Keychain and is never
-passed to the proxy.
+proxy's `--auto-iam-authn` flag. In automatic IAM mode, Solnari derives the engine-specific database
+username from the ADC principal when possible and never asks for, passes, or stores a database
+password. PostgreSQL uses the full user email (or a service-account email without the
+`.gserviceaccount.com` suffix); MySQL uses the portion before `@`. If an older user ADC file does
+not expose its principal, Solnari suggests the active gcloud account and asks the user to verify
+that it matches ADC. Built-in database authentication keeps the password in Keychain.
 
 Install `cloud-sql-proxy` and authenticate Application Default Credentials before connecting. Use
 `SOLNARI_CLOUD_SQL_PROXY` to point Solnari at a nonstandard binary location.

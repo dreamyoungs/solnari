@@ -17,6 +17,7 @@ Solnari explores a native SwiftUI experience for working with local, cloud, and 
 - Embedded Codex assistant experience with SQL proposals and explicit editor handoff
 - Runtime language switching between English and Korean
 - Configurable result display time zone with typed zoned and zone-less timestamps
+- Single-instance app lifecycle with connection and helper-process cleanup on quit, sleep, and user-session changes
 - Light and dark appearance through macOS semantic colors
 
 ## Prototype boundaries
@@ -44,13 +45,28 @@ Codex conversations will use ephemeral App Server threads and will not be persis
 
 Dependencies are resolved by Swift Package Manager. Database access uses the open-source [PostgresNIO](https://github.com/vapor/postgres-nio), [MySQLNIO](https://github.com/vapor/mysql-nio), and [SQLiteNIO](https://github.com/vapor/sqlite-nio) drivers.
 
-Cloud SQL, SSH, and Kubernetes paths use `cloud-sql-proxy`, OpenSSH, and `kubectl`, respectively. Solnari discovers them from its launch `PATH`, common macOS installation directories, or the `SOLNARI_CLOUD_SQL_PROXY`, `SOLNARI_SSH`, and `SOLNARI_KUBECTL` environment variables.
+Cloud SQL, SSH, and Kubernetes paths use `cloud-sql-proxy`, OpenSSH, and `kubectl`, respectively. Solnari discovers them in its app bundle, launch `PATH`, common macOS installation directories, or a time-bounded interactive login-shell lookup. The `SOLNARI_CLOUD_SQL_PROXY`, `SOLNARI_SSH`, and `SOLNARI_KUBECTL` environment variables remain available for command-line development.
 
 ## Run
 
+Build and open the native development app bundle:
+
 ```bash
-swift run Solnari
+./Scripts/run-app.sh
 ```
+
+Build a release app without opening it:
+
+```bash
+./Scripts/build-app.sh release
+open .build/app/release/Solnari.app
+```
+
+The local bundle uses the stable identifier `com.dreamyoungs.solnari`, version `0.1.0` (build 1), and an ad-hoc development signature. Developer ID signing, notarization, packaging, and updates remain distribution work rather than local build responsibilities.
+
+On its first bundled launch, Solnari migrates non-secret connection profiles, language, and display-time-zone preferences created by earlier `swift run` builds. Existing Keychain passwords remain attached to the same profile identifiers and are not copied into preferences.
+
+For a quick command-line development cycle, `swift run Solnari` remains available.
 
 You can also open `Package.swift` in Xcode and run the `Solnari` executable target.
 
@@ -59,6 +75,7 @@ You can also open `Package.swift` in Xcode and run the `Solnari` executable targ
 ```bash
 swift build
 swift test
+./Scripts/build-app.sh release
 git diff --check
 ```
 

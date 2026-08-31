@@ -18,10 +18,13 @@ final class WorkspaceModel: ObservableObject {
   @Published var showNewConnection = false
   @Published var selectedResultTab = "Results"
   @Published var presentedError: String?
+  @Published private(set) var areConnectionOperationsSuspended = false
 
   private let backend: DatabaseBackend
   private let profileStore: ConnectionProfileStore
   private let passwordStore: KeychainPasswordStore
+  private var activeSuspensionCleanups = 0
+  private var resumeRequestedAfterCleanup = false
 
   init(
     backend: DatabaseBackend = DatabaseBackend(),
@@ -97,17 +100,23 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func testConnection(_ draft: ConnectionDraft) async throws -> ConnectionMetadata {
+    guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
     let profile = try draft.makeProfile()
-    return try await backend.testConnection(profile: profile, password: draft.password)
+    return try await backend.testConnection(profile: profile, password: draft.connectionPassword)
   }
 
   func saveAndConnect(_ draft: ConnectionDraft) async throws {
+    guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
     var profile = try draft.makeProfile()
-    let metadata = try await backend.connect(profile: profile, password: draft.password)
+    let metadata = try await backend.connect(profile: profile, password: draft.connectionPassword)
+    guard !areConnectionOperationsSuspended else {
+      await backend.disconnect(profileID: profile.id)
+      throw SolnariDatabaseError.notConnected
+    }
 
     do {
       let loadedSchema = try await backend.loadSchema(profileID: profile.id)
-      try passwordStore.save(draft.password, for: profile.id)
+      try passwordStore.save(draft.connectionPassword, for: profile.id)
       apply(metadata, to: &profile)
       profile.status = .connected
       connections.insert(profile, at: 0)
@@ -124,6 +133,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func activateSelectedConnection() async {
+    guard !areConnectionOperationsSuspended else { return }
     guard let selectedConnectionID else {
       schemaObjects = []
       return
@@ -135,7 +145,9 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func connect(profileID: UUID) async {
-    guard !isConnecting, let index = connections.firstIndex(where: { $0.id == profileID }) else {
+    guard !areConnectionOperationsSuspended, !isConnecting,
+      let index = connections.firstIndex(where: { $0.id == profileID })
+    else {
       return
     }
     isConnecting = true
@@ -145,6 +157,11 @@ final class WorkspaceModel: ObservableObject {
       let profile = connections[index]
       let password = try passwordStore.password(for: profileID) ?? ""
       let metadata = try await backend.connect(profile: profile, password: password)
+      guard !areConnectionOperationsSuspended else {
+        await backend.disconnect(profileID: profileID)
+        isConnecting = false
+        return
+      }
       guard let refreshedIndex = connections.firstIndex(where: { $0.id == profileID }) else {
         throw SolnariDatabaseError.missingConnection
       }
@@ -156,16 +173,19 @@ final class WorkspaceModel: ObservableObject {
       try profileStore.save(connections)
     } catch {
       if let failedIndex = connections.firstIndex(where: { $0.id == profileID }) {
-        connections[failedIndex].status = .failed
+        connections[failedIndex].status =
+          areConnectionOperationsSuspended ? .disconnected : .failed
       }
       if selectedConnectionID == profileID { schemaObjects = [] }
-      presentedError = error.localizedDescription
+      if !areConnectionOperationsSuspended {
+        presentedError = error.localizedDescription
+      }
     }
     isConnecting = false
   }
 
   func refreshSchema() async {
-    guard let profileID = selectedConnectionID else { return }
+    guard !areConnectionOperationsSuspended, let profileID = selectedConnectionID else { return }
     do {
       schemaObjects = try await backend.loadSchema(profileID: profileID)
     } catch {
@@ -193,7 +213,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func runCurrentQuery() async {
-    guard !isRunning, let profileID = selectedConnectionID,
+    guard !areConnectionOperationsSuspended, !isRunning, let profileID = selectedConnectionID,
       let sql = selectedTab?.sql.trimmingCharacters(in: .whitespacesAndNewlines), !sql.isEmpty
     else { return }
 
@@ -218,10 +238,45 @@ final class WorkspaceModel: ObservableObject {
         await refreshSchema()
       }
     } catch {
-      executionMessage = "Query failed"
-      presentedError = error.localizedDescription
+      if areConnectionOperationsSuspended {
+        executionMessage = "No results"
+      } else {
+        executionMessage = "Query failed"
+        presentedError = error.localizedDescription
+      }
     }
     isRunning = false
+  }
+
+  func suspendConnections() async {
+    resumeRequestedAfterCleanup = false
+    activeSuspensionCleanups += 1
+    areConnectionOperationsSuspended = true
+    isConnecting = false
+    isRunning = false
+    schemaObjects = []
+    executionMessage = "No results"
+    for index in connections.indices {
+      connections[index].status = .disconnected
+    }
+    await backend.disconnectAll()
+    for index in connections.indices {
+      connections[index].status = .disconnected
+    }
+    try? profileStore.save(connections)
+    activeSuspensionCleanups -= 1
+    if activeSuspensionCleanups == 0, resumeRequestedAfterCleanup {
+      resumeRequestedAfterCleanup = false
+      areConnectionOperationsSuspended = false
+    }
+  }
+
+  func resumeConnectionOperations() {
+    if activeSuspensionCleanups > 0 {
+      resumeRequestedAfterCleanup = true
+    } else {
+      areConnectionOperationsSuspended = false
+    }
   }
 
   func clearResults() {

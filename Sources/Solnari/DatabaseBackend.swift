@@ -62,6 +62,14 @@ actor DatabaseBackend {
     await transports.close(profileID: profileID)
   }
 
+  func disconnectAll() async {
+    let profileIDs = Array(connectedEngines.keys)
+    for profileID in profileIDs {
+      await disconnect(profileID: profileID)
+    }
+    await transports.closeAll()
+  }
+
   func loadSchema(profileID: UUID) async throws -> [SchemaObject] {
     switch try engine(for: profileID) {
     case .postgresql: try await postgresql.loadSchema(profileID: profileID)

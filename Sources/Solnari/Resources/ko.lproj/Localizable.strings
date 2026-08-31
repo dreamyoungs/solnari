@@ -114,6 +114,7 @@
 "Cloud SQL instance" = "Cloud SQL 인스턴스";
 "Region" = "리전";
 "Database user" = "데이터베이스 사용자";
+"IAM database user" = "IAM 데이터베이스 사용자";
 "Use automatic IAM database authentication" = "자동 IAM 데이터베이스 인증 사용";
 "Database host" = "데이터베이스 호스트";
 "SSH host" = "SSH 호스트";
@@ -140,6 +141,11 @@
 "Create SQLite database" = "SQLite 데이터베이스 만들기";
 "An existing file is opened; a new file is created when needed." = "기존 파일을 열거나 필요할 때 새 파일을 만듭니다.";
 "Uses current ADC account" = "현재 ADC 계정 사용";
+"Checking ADC account…" = "ADC 계정 확인 중…";
+"IAM database user filled automatically" = "IAM 데이터베이스 사용자 자동 입력";
+"Active gcloud account suggested; verify that it matches ADC" = "활성 gcloud 계정을 제안했습니다. ADC와 일치하는지 확인하세요";
+"Enter the IAM database user manually" = "IAM 데이터베이스 사용자를 직접 입력하세요";
+"Automatic IAM authentication does not use a database password." = "자동 IAM 인증에서는 데이터베이스 비밀번호를 사용하지 않습니다.";
 "Testing connection…" = "연결 테스트 중…";
 "Connected in" = "연결됨 ·";
 "Cancel" = "취소";

@@ -47,4 +47,37 @@ struct SQLiteBackendIntegrationTests {
     #expect(schema.contains { $0.name == "people" && $0.columnCount == 2 })
     await backend.disconnect(profileID: profile.id)
   }
+
+  @Test("전체 연결 해제는 열려 있는 모든 데이터베이스 세션을 닫는다")
+  func disconnectAllClosesEverySession() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SolnariDisconnectAllTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let backend = DatabaseBackend()
+    let profiles = ["first", "second"].map { name in
+      ConnectionProfile(
+        name: name,
+        database: directory.appendingPathComponent("\(name).sqlite").path,
+        engine: .sqlite,
+        transport: .direct,
+        host: "",
+        port: 0,
+        username: "",
+        requiresTLS: false,
+        clientEncoding: "Automatic"
+      )
+    }
+
+    for profile in profiles {
+      _ = try await backend.connect(profile: profile, password: "")
+    }
+    await backend.disconnectAll()
+
+    for profile in profiles {
+      await #expect(throws: SolnariDatabaseError.self) {
+        try await backend.execute(profileID: profile.id, sql: "SELECT 1")
+      }
+    }
+  }
 }

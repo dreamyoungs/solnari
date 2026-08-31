@@ -34,6 +34,13 @@ If any step fails, the live client is cancelled, the Keychain item is removed, a
 is not retained. Profiles loaded after relaunch begin disconnected and reconnect with their
 Keychain credential when selected or when a query is run.
 
+The application owns one `AppEnvironment` and one `WorkspaceModel` per process. A process lock
+prevents a second launch from owning duplicate database sessions or helper processes; the second
+launch asks the existing app to bring its main window forward. Quit waits for all database clients,
+Cloud SQL Proxy and SSH forwarding processes, and Kubernetes relay cleanup to finish. Screen lock,
+sleep, screen sleep, and user-session deactivation perform the same cleanup and leave profiles
+disconnected after the Mac becomes active again.
+
 ## Typed results
 
 The PostgreSQL and MySQL adapters decode booleans, signed integers, floating-point values, arbitrary

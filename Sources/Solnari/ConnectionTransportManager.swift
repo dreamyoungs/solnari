@@ -168,10 +168,32 @@ actor ConnectionTransportManager {
   func close(profileID: UUID) async {
     guard let session = sessions.removeValue(forKey: profileID) else { return }
     for process in session.processes where process.isRunning {
-      process.terminate()
+      await terminate(process)
     }
     if let cleanup = session.cleanup {
       _ = try? await run(cleanup)
+    }
+  }
+
+  func closeAll() async {
+    let profileIDs = Array(sessions.keys)
+    for profileID in profileIDs {
+      await close(profileID: profileID)
+    }
+  }
+
+  private func terminate(_ process: Process) async {
+    guard process.isRunning else { return }
+    process.terminate()
+    for _ in 0..<20 {
+      if !process.isRunning { return }
+      try? await Task.sleep(for: .milliseconds(50))
+    }
+    if process.isRunning {
+      _ = Darwin.kill(process.processIdentifier, SIGKILL)
+    }
+    for _ in 0..<10 where process.isRunning {
+      try? await Task.sleep(for: .milliseconds(50))
     }
   }
 
@@ -382,9 +404,15 @@ enum ExecutableResolver {
     }
     let pathDirectories = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
     let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let bundledHelpers = Bundle.main.bundleURL
+      .appendingPathComponent("Contents", isDirectory: true)
+      .appendingPathComponent("Helpers", isDirectory: true).path
     let directories =
       pathDirectories + [
+        bundledHelpers,
         "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "\(home)/google-cloud-sdk/bin",
+        "/opt/homebrew/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/bin",
+        "/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/bin",
       ]
     if let path =
       directories
@@ -393,6 +421,38 @@ enum ExecutableResolver {
     {
       return path
     }
+    if let path = resolveFromLoginShell(name: name) {
+      return path
+    }
     throw SolnariDatabaseError.missingExecutable(name)
+  }
+
+  private static func resolveFromLoginShell(name: String) -> String? {
+    let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._"))
+    guard name.unicodeScalars.allSatisfy(allowedCharacters.contains) else { return nil }
+
+    let process = Process()
+    let output = Pipe()
+    let completion = DispatchSemaphore(value: 0)
+    process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+    process.arguments = ["-lic", "command -v -- \(name)"]
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    process.terminationHandler = { _ in completion.signal() }
+    do {
+      try process.run()
+    } catch {
+      return nil
+    }
+    guard completion.wait(timeout: .now() + 3) == .success else {
+      process.terminate()
+      return nil
+    }
+    guard process.terminationStatus == 0 else { return nil }
+
+    let result = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    return result.split(whereSeparator: \Character.isNewline)
+      .map(String.init)
+      .last(where: { $0.hasPrefix("/") && FileManager.default.isExecutableFile(atPath: $0) })
   }
 }

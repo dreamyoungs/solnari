@@ -7,7 +7,11 @@ struct NewConnectionView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var draft = ConnectionDraft()
   @State private var testState: TestState = .idle
+  @State private var adcIdentityState: ADCIdentityState = .idle
+  @State private var autoFilledIAMUsername: String?
   @FocusState private var focusedField: FocusedField?
+
+  private static let googleCloudIdentityResolver = GoogleCloudIdentityResolver()
 
   private enum FocusedField: Hashable {
     case connectionName
@@ -18,6 +22,13 @@ struct NewConnectionView: View {
     case testing
     case success(ConnectionMetadata)
     case failure(String)
+  }
+
+  private enum ADCIdentityState: Equatable {
+    case idle
+    case resolving
+    case resolved(GoogleCloudIdentity)
+    case unavailable
   }
 
   var body: some View {
@@ -50,6 +61,18 @@ struct NewConnectionView: View {
       draft.clientEncoding = "Automatic"
       draft.preferredCharacterSet = "Database default"
       draft.preferredCollation = "Database default"
+      applyResolvedADCIdentity()
+    }
+    .onChange(of: draft.transport) {
+      Task { await resolveADCIdentityIfNeeded() }
+    }
+    .onChange(of: draft.useIAM) {
+      if draft.useIAM {
+        draft.password = ""
+        Task { await resolveADCIdentityIfNeeded() }
+      } else {
+        adcIdentityState = .idle
+      }
     }
     .onChange(of: draft) {
       guard !isTesting, testState != .idle else { return }
@@ -189,9 +212,7 @@ struct NewConnectionView: View {
           }
         }
         Spacer()
-        Text(settings.text("Uses current ADC account"))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        adcIdentityStatus
       }
       .padding(10)
       .background(
@@ -204,13 +225,59 @@ struct NewConnectionView: View {
       }
       HStack(spacing: 14) {
         labeledField("Database", placeholder: "app_production", text: $draft.database)
-        labeledField("Database user", placeholder: "user@example.com", text: $draft.user)
+        labeledField(
+          draft.useIAM ? "IAM database user" : "Database user",
+          placeholder: iamDatabaseUserPlaceholder,
+          text: $draft.user
+        )
       }
-      passwordField
       Toggle(isOn: $draft.useIAM) {
         Text(settings.text("Use automatic IAM database authentication"))
       }
       .font(.system(size: 12))
+      if draft.useIAM {
+        Text(settings.text("Automatic IAM authentication does not use a database password."))
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        passwordField
+      }
+    }
+  }
+
+  @ViewBuilder
+  private var adcIdentityStatus: some View {
+    switch adcIdentityState {
+    case .idle:
+      Text(settings.text("Uses current ADC account"))
+        .foregroundStyle(.secondary)
+    case .resolving:
+      HStack(spacing: 5) {
+        ProgressView().controlSize(.mini)
+        Text(settings.text("Checking ADC account…"))
+      }
+      .foregroundStyle(.secondary)
+    case .resolved(let identity):
+      VStack(alignment: .trailing, spacing: 1) {
+        Text(identity.email)
+          .font(.caption)
+          .foregroundStyle(.primary)
+          .textSelection(.enabled)
+        Text(
+          settings.text(
+            identity.source == .applicationDefaultCredentials
+              ? "IAM database user filled automatically"
+              : "Active gcloud account suggested; verify that it matches ADC"
+          )
+        )
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+      }
+    case .unavailable:
+      Text(settings.text("Enter the IAM database user manually"))
+        .font(.caption)
+        .foregroundStyle(SolnariTheme.orange)
     }
   }
 
@@ -663,6 +730,41 @@ struct NewConnectionView: View {
 
   private var defaultPort: String {
     draft.engine == .mysql ? "3306" : "5432"
+  }
+
+  private var iamDatabaseUserPlaceholder: String {
+    draft.engine == .mysql ? "user" : "user@example.com"
+  }
+
+  private func resolveADCIdentityIfNeeded() async {
+    guard draft.transport == .cloudSQL, draft.useIAM else { return }
+    if case .resolved = adcIdentityState {
+      applyResolvedADCIdentity()
+      return
+    }
+    adcIdentityState = .resolving
+    let identity = await Self.googleCloudIdentityResolver.resolve()
+    guard draft.transport == .cloudSQL, draft.useIAM else { return }
+    if let identity {
+      adcIdentityState = .resolved(identity)
+      apply(identity)
+    } else {
+      adcIdentityState = .unavailable
+    }
+  }
+
+  private func applyResolvedADCIdentity() {
+    guard case .resolved(let identity) = adcIdentityState else { return }
+    apply(identity)
+  }
+
+  private func apply(_ identity: GoogleCloudIdentity) {
+    let username = identity.databaseUsername(for: draft.engine)
+    let trimmedUser = draft.user.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmedUser.isEmpty || draft.user == autoFilledIAMUsername {
+      draft.user = username
+      autoFilledIAMUsername = username
+    }
   }
 
   private func chooseExistingSQLiteFile() {

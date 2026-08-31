@@ -69,7 +69,7 @@ final class AppSettings: ObservableObject {
 
   func text(_ key: String) -> String {
     let languageCode = effectiveLanguage.rawValue
-    guard let path = Bundle.module.path(forResource: languageCode, ofType: "lproj"),
+    guard let path = SolnariResources.bundle.path(forResource: languageCode, ofType: "lproj"),
       let bundle = Bundle(path: path)
     else {
       return key

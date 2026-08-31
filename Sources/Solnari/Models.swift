@@ -268,6 +268,10 @@ struct ConnectionDraft: Equatable, Sendable {
     engine != .sqlite || transport == .direct
   }
 
+  var connectionPassword: String {
+    transport == .cloudSQL && useIAM ? "" : password
+  }
+
   var isValid: Bool {
     guard !name.trimmed.isEmpty, supportsSelectedTransport else { return false }
     if engine == .sqlite {
