@@ -38,7 +38,7 @@ Solnari now aims to be:
 - Schema, table, and view discovery with dynamic query execution
 - Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, and experimental Kubernetes relay paths
 - ADC-based Cloud SQL automatic IAM authentication with engine-aware database-user suggestions
-- Named profiles with database passwords stored separately in macOS Keychain
+- Sensitive profiles and passwords in device-only macOS Keychain with an opaque local index
 - Multi-tab SQL editor and resizable editor/result layout
 - AppKit result grid with resizable columns and multi-row selection
 - Copy and export to CSV, TSV, JSON, JSON Lines, Markdown, and SQL `INSERT`
@@ -82,7 +82,6 @@ See the [backend architecture](docs/backend-architecture.md),
 
 - Existing-resource Kubernetes port-forward with fail-closed identity validation
 - Versioned and eventually signed organization policy profiles
-- Keychain boundaries for sensitive infrastructure topology
 - Idle/max session lifetime and orphan recovery after forced termination
 - A dialect-aware SQL parser, consistent timeouts, query cancellation, and result/export limits
 - Production write approval and one-time write capabilities
@@ -125,7 +124,8 @@ SQLite and isolated fake-CLI transport tests run by default.
 
 ## Security and privacy
 
-Database passwords use macOS Keychain rather than profile JSON or `UserDefaults`. Automatic IAM
+Sensitive connection profiles and database passwords use device-only macOS Keychain items rather
+than `UserDefaults`; the local index contains only opaque UUID ordering. Automatic IAM
 authentication neither requests a database password nor passes one to helper arguments. Helper
 commands use executable and argument arrays, and private connection failures never trigger an
 automatic transport fallback.

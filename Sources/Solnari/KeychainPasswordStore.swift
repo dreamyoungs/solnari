@@ -16,8 +16,12 @@ struct KeychainPasswordStore: Sendable {
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: service,
       kSecAttrAccount: account,
+      kSecAttrSynchronizable: kCFBooleanFalse as Any,
     ]
-    let attributes: [CFString: Any] = [kSecValueData: passwordData]
+    let attributes: [CFString: Any] = [
+      kSecValueData: passwordData,
+      kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+    ]
     let updateStatus = SecItemUpdate(lookup as CFDictionary, attributes as CFDictionary)
 
     if updateStatus == errSecSuccess { return }
@@ -27,6 +31,7 @@ struct KeychainPasswordStore: Sendable {
 
     var addition = lookup
     addition[kSecValueData] = passwordData
+    addition[kSecAttrAccessible] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
     let addStatus = SecItemAdd(addition as CFDictionary, nil)
     guard addStatus == errSecSuccess else {
       throw SolnariDatabaseError.keychain(addStatus)
@@ -38,6 +43,7 @@ struct KeychainPasswordStore: Sendable {
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: service,
       kSecAttrAccount: profileID.uuidString,
+      kSecAttrSynchronizable: kCFBooleanFalse as Any,
       kSecReturnData: true,
       kSecMatchLimit: kSecMatchLimitOne,
     ]
@@ -55,6 +61,7 @@ struct KeychainPasswordStore: Sendable {
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: service,
       kSecAttrAccount: profileID.uuidString,
+      kSecAttrSynchronizable: kCFBooleanFalse as Any,
     ]
     let status = SecItemDelete(query as CFDictionary)
     guard status == errSecSuccess || status == errSecItemNotFound else {

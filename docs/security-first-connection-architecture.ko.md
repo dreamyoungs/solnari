@@ -428,6 +428,7 @@ Solnari는 이 인프라를 임의로 생성하지 않고 검증 결과가 맞�
 - typed query result와 export
 - 프로필 이름과 비밀정보 분리
 - Keychain abstraction
+- 민감 profile payload의 device-only Keychain 저장과 opaque local index 이관
 - 포트 자동 할당과 loopback binding 기반
 - 기존 Service/Pod에 리소스 생성 없이 port-forward하는 일반 Kubernetes 경로
 - 보안 정책과 DB 접근 등급의 profile 저장 및 읽기 전용 session 차단

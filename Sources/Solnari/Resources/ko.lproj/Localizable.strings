@@ -235,3 +235,4 @@
 "Fill in every required connection field." = "필수 연결 정보를 모두 입력해 주세요.";
 "The local connection path did not become ready in time." = "로컬 연결 경로가 제한 시간 안에 준비되지 않았습니다.";
 "This SQL is not allowed by the connection's access level." = "이 SQL은 현재 연결의 접근 등급에서 허용되지 않습니다.";
+"The connection profile index and macOS Keychain are inconsistent." = "연결 프로필 목록과 macOS 키체인 상태가 일치하지 않습니다.";

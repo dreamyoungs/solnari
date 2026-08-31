@@ -35,7 +35,15 @@ final class WorkspaceModel: ObservableObject {
     self.profileStore = profileStore
     self.passwordStore = passwordStore
 
-    let storedConnections = profileStore.load()
+    let storedConnections: [ConnectionProfile]
+    let profileLoadError: String?
+    do {
+      storedConnections = try profileStore.load()
+      profileLoadError = nil
+    } catch {
+      storedConnections = []
+      profileLoadError = error.localizedDescription
+    }
     connections = storedConnections
     selectedConnectionID = storedConnections.first?.id
 
@@ -57,6 +65,7 @@ final class WorkspaceModel: ObservableObject {
         sql: nil
       )
     ]
+    presentedError = profileLoadError
   }
 
   var selectedConnection: ConnectionProfile? {

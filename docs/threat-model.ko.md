@@ -55,13 +55,12 @@ Kubernetes RBAC, network policy와 database role이 강제해야 합니다.
 
 ## 현재 보장과 차이
 
-현재 구현은 Keychain password, 자동 IAM의 password 비사용, 명시적 transport 선택,
+현재 구현은 device-only Keychain profile/password, 자동 IAM의 password 비사용, 명시적 transport 선택,
 loopback tunnel, 정상 종료·잠금·절전 cleanup과 Agent의 명시적 editor handoff를 제공합니다.
 읽기 전용 profile은 보수적인 SQL 사전 검사와 database session 쓰기 차단을 함께 사용합니다.
 
 아직 다음 경계는 완성되지 않았습니다.
 
-- 민감 topology 전체의 Keychain payload 저장
 - 기존 Kubernetes resource identity 검증과 최소 RBAC transport
 - crash orphan recovery와 session timeout
 - dialect-aware SQL parser, 공통 query timeout/cancel과 production approval

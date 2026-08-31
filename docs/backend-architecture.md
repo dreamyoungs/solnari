@@ -7,8 +7,11 @@ wire protocols and schema queries remain isolated.
 ## Components
 
 - `WorkspaceModel` coordinates user actions and publishes UI state on the main actor.
-- `ConnectionProfileStore` persists named, non-secret connection profiles in `UserDefaults`.
-- `KeychainPasswordStore` stores passwords as generic-password items keyed by profile UUID.
+- `ConnectionProfileStore` keeps only ordered opaque profile UUIDs in `UserDefaults` and migrates
+  legacy plaintext payloads into Keychain.
+- `KeychainConnectionProfileVault` stores versioned sensitive profile payloads, while
+  `KeychainPasswordStore` stores passwords separately; both use non-synchronizing,
+  `WhenUnlockedThisDeviceOnly` generic-password items keyed by profile UUID.
 - `DatabaseBackend` routes workspace operations to the selected engine and coordinates transport cleanup.
 - `PostgreSQLBackend`, `MySQLBackend`, and `SQLiteBackend` own driver sessions, metadata queries,
   schema discovery, and dynamic result decoding.
@@ -29,8 +32,8 @@ Saving a connection follows a fail-closed sequence:
 2. establish the selected network path and connect the selected database engine;
 3. fetch server version, encoding, database, and session time zone;
 4. discover user tables and views;
-5. store the password in Keychain;
-6. persist the non-secret profile and publish it in the sidebar.
+5. store the password and sensitive profile payload in separate Keychain items;
+6. persist only the ordered opaque profile index and publish the profile in the sidebar.
 
 If any step fails, the live client is cancelled, the Keychain item is removed, and the profile
 is not retained. Profiles loaded after relaunch begin disconnected and reconnect with their

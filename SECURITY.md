@@ -26,6 +26,8 @@ credential·token·private hostname·project/cluster/database 식별자·운영 
 ## 현재 구현된 경계
 
 - 일반 database password는 macOS Keychain generic-password item에 저장합니다.
+- 민감한 connection profile payload는 iCloud 동기화를 끈
+  `WhenUnlockedThisDeviceOnly` Keychain item에 저장합니다.
 - credential을 helper process argument로 전달하지 않습니다.
 - Cloud SQL 자동 IAM 인증에서는 database password를 저장하거나 전달하지 않습니다.
 - Cloud SQL Proxy, SSH와 Kubernetes port-forward는 임의 loopback port를 사용합니다.
@@ -36,9 +38,6 @@ credential·token·private hostname·project/cluster/database 식별자·운영 
 
 ## 현재 한계
 
-- 비밀번호를 제외한 hostname, project, cluster, namespace, database와 username은 아직
-  `UserDefaults` profile payload에 저장됩니다. 민감한 조직 topology를 위한 Keychain
-  payload 분리는 구현 중입니다.
 - 현재 Kubernetes 기능은 임시 relay Pod를 생성·삭제하므로 최소 `pods/portforward`보다
   넓은 권한이 필요합니다. 조직 관리형 또는 security-compliant transport로 간주하지 마세요.
 - 강제 종료 뒤 orphan process 탐지, session idle/max timeout과 parent-death supervision은
@@ -46,6 +45,7 @@ credential·token·private hostname·project/cluster/database 식별자·운영 
 - 현재 SQL 사전 검사는 의도적으로 보수적인 lexer이며 완전한 dialect parser가 아닙니다.
   공통 query timeout/cancel과 production write approval은 아직 강제되지 않습니다.
 - app은 개발용 ad-hoc 서명을 사용하며 아직 Developer ID notarization 배포물이 아닙니다.
+  Data Protection Keychain 전환도 필요한 signing entitlement와 함께 배포 단계에서 적용합니다.
 
 ## 공개 저장소 원칙
 

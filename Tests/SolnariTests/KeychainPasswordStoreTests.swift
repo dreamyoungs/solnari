@@ -17,4 +17,29 @@ struct KeychainPasswordStoreTests {
     try store.delete(for: profileID)
     #expect(try store.password(for: profileID) == nil)
   }
+
+  @Test("민감한 연결 profile을 동기화되지 않는 device-only Keychain에 저장한다")
+  func sensitiveProfileRoundTrip() throws {
+    let vault = KeychainConnectionProfileVault()
+    let profile = ConnectionProfile(
+      name: "Private profile",
+      database: "database",
+      engine: .postgresql,
+      transport: .direct,
+      host: "private.example.invalid",
+      port: 5432,
+      username: "developer",
+      requiresTLS: true,
+      clientEncoding: "UTF8"
+    )
+    defer { try? vault.delete(profileID: profile.id) }
+
+    try vault.save(profile)
+    let loaded = try #require(try vault.profile(for: profile.id))
+    #expect(loaded.host == "private.example.invalid")
+    #expect(loaded.status == .disconnected)
+
+    try vault.delete(profileID: profile.id)
+    #expect(try vault.profile(for: profile.id) == nil)
+  }
 }

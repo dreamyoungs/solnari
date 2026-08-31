@@ -517,6 +517,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case transportFailed(String)
   case transportTimedOut
   case queryNotAllowedForAccessLevel
+  case invalidProfileStore
   case keychain(OSStatus)
 
   var errorDescription: String? {
@@ -533,6 +534,8 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .transportTimedOut: "The local connection path did not become ready in time."
     case .queryNotAllowedForAccessLevel:
       "This SQL is not allowed by the connection's access level."
+    case .invalidProfileStore:
+      "The connection profile index and macOS Keychain are inconsistent."
     case .keychain(let status): "macOS Keychain returned error \(status)."
     }
   }

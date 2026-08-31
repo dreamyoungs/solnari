@@ -39,7 +39,7 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - 사용자 스키마·테이블·뷰 탐색과 동적 쿼리 실행
 - Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, Kubernetes 임시 relay 경로
 - ADC 기반 Cloud SQL 자동 IAM 인증과 엔진별 IAM DB 사용자명 제안
-- 이름이 있는 연결 프로필과 macOS Keychain 기반 비밀번호 분리 저장
+- 민감 연결 profile과 비밀번호의 device-only macOS Keychain 저장, opaque local index
 - 다중 탭 SQL editor와 크기 조절 가능한 editor/result layout
 - 컬럼 크기 조절과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
 - CSV, TSV, JSON, JSON Lines, Markdown, SQL `INSERT` 복사·내보내기
@@ -92,7 +92,6 @@ Service/Pod에 `pods/portforward` 최소 권한으로만 연결할 예정입니�
 
 - 기존 Kubernetes Service/Pod 검증과 최소 권한 port-forward
 - 조직 관리형 policy profile과 서명·무결성 검증
-- 민감한 infrastructure topology를 포함한 profile의 Keychain 저장 경계
 - 연결 idle/max lifetime, 강제 종료 뒤 orphan process 복구
 - dialect-aware SQL parser, 공통 timeout, query cancel과 결과/export 상한
 - 운영 DML/DDL 승인과 일회성 write capability
@@ -151,7 +150,8 @@ SQLite와 격리된 fake CLI transport test는 기본 `swift test`에서 실행�
 
 ## 개인정보와 보안
 
-- 일반 DB 비밀번호는 profile JSON이나 `UserDefaults`가 아니라 macOS Keychain에 저장합니다.
+- 민감 connection profile과 일반 DB 비밀번호는 `UserDefaults`가 아니라 device-only
+  macOS Keychain에 저장하고, local store에는 opaque UUID 순서만 둡니다.
 - 자동 IAM 인증에서는 DB 비밀번호를 요청하거나 helper argument로 전달하지 않습니다.
 - helper command는 shell 문자열이 아닌 executable과 argument 배열로 실행합니다.
 - Codex 대화, SQL, schema와 result는 현재 Solnari가 영속화하거나 telemetry로 보내지 않습니다.
