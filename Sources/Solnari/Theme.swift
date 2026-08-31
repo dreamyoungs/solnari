@@ -9,7 +9,18 @@ enum SolnariTheme {
 
   static let panel = Color(nsColor: .controlBackgroundColor)
   static let elevated = Color(nsColor: .windowBackgroundColor)
-  static let sidebar = Color(nsColor: .underPageBackgroundColor)
+  static let sidebar = Color(
+    nsColor: NSColor(name: NSColor.Name("SolnariSidebar")) { appearance in
+      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 0.105, green: 0.10, blue: 0.14, alpha: 1)
+        : NSColor(srgbRed: 0.968, green: 0.963, blue: 0.985, alpha: 1)
+    })
+  static let sidebarElevated = Color(
+    nsColor: NSColor(name: NSColor.Name("SolnariSidebarElevated")) { appearance in
+      appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(srgbRed: 0.135, green: 0.13, blue: 0.17, alpha: 1)
+        : NSColor(srgbRed: 0.987, green: 0.984, blue: 0.995, alpha: 1)
+    })
   static let border = Color.primary.opacity(0.09)
   static let subtleFill = Color.primary.opacity(0.045)
 }
@@ -17,12 +28,24 @@ enum SolnariTheme {
 struct SolnariMark: View {
   var size: CGFloat = 30
 
+  @ViewBuilder
   var body: some View {
-    Image("SolnariIcon", bundle: SolnariResources.bundle)
-      .resizable()
-      .interpolation(.high)
-      .frame(width: size, height: size)
-      .accessibilityLabel("Solnari")
+    if let iconURL = SolnariResources.bundle.url(
+      forResource: "SolnariIcon",
+      withExtension: "png"
+    ), let icon = NSImage(contentsOf: iconURL) {
+      Image(nsImage: icon)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: size, height: size)
+        .accessibilityLabel("Solnari")
+    } else {
+      Image(systemName: "camera.macro")
+        .font(.system(size: size * 0.78, weight: .semibold))
+        .foregroundStyle(SolnariTheme.indigo)
+        .frame(width: size, height: size)
+        .accessibilityLabel("Solnari")
+    }
   }
 }
 

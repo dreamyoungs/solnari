@@ -177,7 +177,7 @@ struct SidebarView: View {
       .foregroundStyle(.secondary)
     }
     .padding(12)
-    .background(.thinMaterial)
+    .background(SolnariTheme.sidebarElevated)
     .overlay(alignment: .top) { Divider() }
   }
 }
