@@ -1,0 +1,6 @@
+/* English source strings are also localization keys; only explicit overrides live here. */
+"Language" = "Language";
+"Follow System" = "Follow System";
+"Appearance" = "Appearance";
+"Settings" = "Settings";
+"The interface updates immediately when you change the language." = "The interface updates immediately when you change the language.";

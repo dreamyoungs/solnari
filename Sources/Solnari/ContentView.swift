@@ -1,0 +1,54 @@
+import SwiftUI
+
+struct ContentView: View {
+  @EnvironmentObject private var model: WorkspaceModel
+  @EnvironmentObject private var settings: AppSettings
+  @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+  var body: some View {
+    NavigationSplitView(columnVisibility: $columnVisibility) {
+      SidebarView()
+        .navigationSplitViewColumnWidth(min: 236, ideal: 268, max: 320)
+    } detail: {
+      HStack(spacing: 0) {
+        WorkspaceView()
+          .frame(minWidth: 660)
+          .frame(maxWidth: .infinity)
+          .clipped()
+
+        if model.isAssistantVisible {
+          AIAssistantView()
+            .frame(width: 340)
+        }
+      }
+      .background(Color(nsColor: .textBackgroundColor))
+    }
+    .navigationSplitViewStyle(.balanced)
+    .toolbar {
+      ToolbarItemGroup(placement: .primaryAction) {
+        Button {
+          withAnimation(.snappy) {
+            model.isAssistantVisible.toggle()
+          }
+        } label: {
+          Image(systemName: "sparkles")
+            .foregroundStyle(model.isAssistantVisible ? SolnariTheme.indigo : .secondary)
+        }
+        .help(settings.text("Toggle Codex"))
+
+        Button {
+          model.showNewConnection = true
+        } label: {
+          Label(settings.text("New Connection"), systemImage: "plus")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(SolnariTheme.indigo)
+      }
+    }
+    .sheet(isPresented: $model.showNewConnection) {
+      NewConnectionView()
+        .environmentObject(model)
+    }
+    .tint(SolnariTheme.indigo)
+  }
+}
