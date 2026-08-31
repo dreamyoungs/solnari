@@ -6,8 +6,13 @@ struct NewConnectionView: View {
   @Environment(\.dismiss) private var dismiss
   @State private var draft = ConnectionDraft()
   @State private var testState: TestState = .idle
+  @FocusState private var focusedField: FocusedField?
 
-  enum TestState {
+  private enum FocusedField: Hashable {
+    case connectionName
+  }
+
+  enum TestState: Equatable {
     case idle
     case testing
     case success(ConnectionMetadata)
@@ -40,7 +45,11 @@ struct NewConnectionView: View {
       draft.preferredCollation = "Database default"
     }
     .onChange(of: draft) {
-      if !isTesting { testState = .idle }
+      guard !isTesting, testState != .idle else { return }
+      testState = .idle
+    }
+    .onAppear {
+      focusedField = .connectionName
     }
   }
 
@@ -76,6 +85,7 @@ struct NewConnectionView: View {
           fieldLabel("Connection name")
           TextField(settings.text("Production database"), text: $draft.name)
             .textFieldStyle(.roundedBorder)
+            .focused($focusedField, equals: .connectionName)
         }
 
         VStack(alignment: .leading, spacing: 7) {
@@ -491,7 +501,7 @@ struct NewConnectionView: View {
             let metadata = try await model.testConnection(testedDraft)
             testState = draft == testedDraft ? .success(metadata) : .idle
           } catch {
-            testState = .failure(error.localizedDescription)
+            testState = draft == testedDraft ? .failure(error.localizedDescription) : .idle
           }
         }
       }

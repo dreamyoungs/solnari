@@ -1,7 +1,20 @@
+import AppKit
 import SwiftUI
+
+@MainActor
+private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    NSApp.setActivationPolicy(.regular)
+    DispatchQueue.main.async {
+      NSApp.activate(ignoringOtherApps: true)
+      NSApp.windows.first?.makeKeyAndOrderFront(nil)
+    }
+  }
+}
 
 @main
 struct SolnariApp: App {
+  @NSApplicationDelegateAdaptor(SolnariAppDelegate.self) private var appDelegate
   @StateObject private var workspace = WorkspaceModel()
   @StateObject private var settings = AppSettings()
 
