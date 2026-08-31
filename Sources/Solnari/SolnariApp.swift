@@ -28,6 +28,7 @@ struct SolnariApp: App {
           Task { await workspace.runCurrentQuery() }
         }
         .keyboardShortcut(.return, modifiers: .command)
+        .disabled(workspace.isRunning || workspace.selectedConnectionID == nil)
 
         Button(settings.text("Format SQL")) {
           workspace.formatCurrentSQL()

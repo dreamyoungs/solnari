@@ -9,9 +9,29 @@ enum AppLanguage: String, CaseIterable, Identifiable {
   var id: String { rawValue }
 }
 
+enum DisplayTimeZoneOption: String, CaseIterable, Identifiable {
+  case system
+  case utc = "UTC"
+  case seoul = "Asia/Seoul"
+  case losAngeles = "America/Los_Angeles"
+  case newYork = "America/New_York"
+  case london = "Europe/London"
+
+  var id: String { rawValue }
+
+  var label: String {
+    self == .system ? "System time zone" : rawValue
+  }
+
+  var timeZone: TimeZone {
+    self == .system ? .current : TimeZone(identifier: rawValue) ?? .current
+  }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
   private static let languageKey = "solnari.language"
+  private static let displayTimeZoneKey = "solnari.displayTimeZone"
 
   @Published var language: AppLanguage {
     didSet {
@@ -19,9 +39,18 @@ final class AppSettings: ObservableObject {
     }
   }
 
+  @Published var displayTimeZoneOption: DisplayTimeZoneOption {
+    didSet {
+      UserDefaults.standard.set(displayTimeZoneOption.rawValue, forKey: Self.displayTimeZoneKey)
+    }
+  }
+
   init() {
     let stored = UserDefaults.standard.string(forKey: Self.languageKey)
     language = stored.flatMap(AppLanguage.init(rawValue:)) ?? .system
+    let storedTimeZone = UserDefaults.standard.string(forKey: Self.displayTimeZoneKey)
+    displayTimeZoneOption =
+      storedTimeZone.flatMap(DisplayTimeZoneOption.init(rawValue:)) ?? .system
   }
 
   var effectiveLanguage: AppLanguage {
@@ -32,6 +61,10 @@ final class AppSettings: ObservableObject {
 
   var locale: Locale {
     Locale(identifier: effectiveLanguage.rawValue)
+  }
+
+  var displayTimeZone: TimeZone {
+    displayTimeZoneOption.timeZone
   }
 
   func text(_ key: String) -> String {

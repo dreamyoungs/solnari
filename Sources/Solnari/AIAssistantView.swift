@@ -31,8 +31,8 @@ struct AIAssistantView: View {
         Text(settings.text("Ask Codex"))
           .font(.system(size: 13, weight: .semibold))
         HStack(spacing: 5) {
-          StatusDot(color: SolnariTheme.mint, size: 5)
-          Text(settings.text("Ephemeral App Server session"))
+          StatusDot(color: SolnariTheme.orange, size: 5)
+          Text(settings.text("Preview · ephemeral sessions planned"))
             .font(.caption2)
             .foregroundStyle(.secondary)
             .help(settings.text("Conversation is kept in memory only"))

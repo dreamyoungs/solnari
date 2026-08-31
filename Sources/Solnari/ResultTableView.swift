@@ -3,19 +3,9 @@ import SwiftUI
 
 @MainActor
 struct ResultTableView: NSViewRepresentable {
-  let rows: [QueryRow]
+  let table: QueryTableData
+  let displayTimeZone: TimeZone
   @Binding var columnWidths: [String: CGFloat]
-
-  private let columnDefinitions:
-    [(id: String, title: String, width: CGFloat, minimumWidth: CGFloat)] = [
-      ("id", "id", 72, 58),
-      ("name", "name", 142, 90),
-      ("email", "email", 205, 120),
-      ("plan", "plan", 105, 72),
-      ("orders", "orders", 82, 68),
-      ("revenue", "revenue", 104, 80),
-      ("created_at", "created_at", 170, 126),
-    ]
 
   func makeCoordinator() -> Coordinator {
     Coordinator(parent: self)
@@ -36,15 +26,7 @@ struct ResultTableView: NSViewRepresentable {
     tableView.gridStyleMask = [.solidVerticalGridLineMask]
     tableView.gridColor = NSColor.separatorColor.withAlphaComponent(0.18)
     tableView.style = .plain
-
-    for definition in columnDefinitions {
-      let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(definition.id))
-      column.title = definition.title
-      column.width = columnWidths[definition.id] ?? definition.width
-      column.minWidth = definition.minimumWidth
-      column.resizingMask = .userResizingMask
-      tableView.addTableColumn(column)
-    }
+    configureColumns(in: tableView)
 
     let scrollView = NSScrollView()
     scrollView.documentView = tableView
@@ -65,6 +47,14 @@ struct ResultTableView: NSViewRepresentable {
     context.coordinator.parent = self
     guard let tableView = context.coordinator.tableView else { return }
 
+    let currentIdentifiers = tableView.tableColumns.map(\.identifier.rawValue)
+    let expectedIdentifiers = table.columns.indices.map(columnID)
+    if currentIdentifiers != expectedIdentifiers
+      || tableView.tableColumns.map(\.title) != table.columns
+    {
+      configureColumns(in: tableView)
+    }
+
     for column in tableView.tableColumns {
       if let desiredWidth = columnWidths[column.identifier.rawValue],
         abs(column.width - desiredWidth) > 0.5
@@ -73,6 +63,29 @@ struct ResultTableView: NSViewRepresentable {
       }
     }
     tableView.reloadData()
+  }
+
+  private func configureColumns(in tableView: NSTableView) {
+    for column in tableView.tableColumns {
+      tableView.removeTableColumn(column)
+    }
+    for (index, title) in table.columns.enumerated() {
+      let identifier = columnID(index)
+      let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
+      column.title = title
+      column.width = columnWidths[identifier] ?? initialWidth(for: title)
+      column.minWidth = 64
+      column.resizingMask = .userResizingMask
+      tableView.addTableColumn(column)
+    }
+  }
+
+  private func columnID(_ index: Int) -> String {
+    "column-\(index)"
+  }
+
+  private func initialWidth(for title: String) -> CGFloat {
+    min(280, max(100, CGFloat(title.count * 8 + 36)))
   }
 
   @MainActor
@@ -85,24 +98,28 @@ struct ResultTableView: NSViewRepresentable {
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-      parent.rows.count
+      parent.table.rows.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
       -> NSView?
     {
-      guard let tableColumn, parent.rows.indices.contains(row) else { return nil }
+      guard let tableColumn,
+        parent.table.rows.indices.contains(row),
+        let columnIndex = tableView.tableColumns.firstIndex(of: tableColumn),
+        parent.table.rows[row].indices.contains(columnIndex)
+      else { return nil }
+
       let reuseIdentifier = NSUserInterfaceItemIdentifier(
         "result-cell-\(tableColumn.identifier.rawValue)")
       let cell =
         tableView.makeView(withIdentifier: reuseIdentifier, owner: nil) as? NSTableCellView
         ?? makeCell(identifier: reuseIdentifier)
-      let textField = cell.textField
-      textField?.stringValue = value(for: tableColumn.identifier.rawValue, row: parent.rows[row])
-      textField?.textColor =
-        tableColumn.identifier.rawValue == "id" ? .secondaryLabelColor : .labelColor
-      textField?.font =
-        tableColumn.identifier.rawValue == "id"
+      let value = parent.table.rows[row][columnIndex]
+      cell.textField?.stringValue = value.displayValue(in: parent.displayTimeZone)
+      cell.textField?.textColor = value == .null ? .secondaryLabelColor : .labelColor
+      cell.textField?.font =
+        isNumeric(value)
         ? NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         : NSFont.systemFont(ofSize: 11)
       return cell
@@ -119,6 +136,13 @@ struct ResultTableView: NSViewRepresentable {
         widths[column.identifier.rawValue] = column.width
       }
       parent.columnWidths = widths
+    }
+
+    private func isNumeric(_ value: QueryCellValue) -> Bool {
+      switch value {
+      case .integer, .decimal: true
+      default: false
+      }
     }
 
     private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
@@ -138,19 +162,6 @@ struct ResultTableView: NSViewRepresentable {
         textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
       ])
       return cell
-    }
-
-    private func value(for column: String, row: QueryRow) -> String {
-      switch column {
-      case "id": String(row.id)
-      case "name": row.name
-      case "email": row.email
-      case "plan": row.plan
-      case "orders": String(row.orders)
-      case "revenue": row.revenue
-      case "created_at": row.createdAt
-      default: ""
-      }
     }
   }
 }

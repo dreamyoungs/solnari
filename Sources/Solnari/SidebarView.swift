@@ -27,10 +27,15 @@ struct SidebarView: View {
             ConnectionRow(connection: connection)
               .tag(connection.id)
               .contextMenu {
-                Button(settings.text("Connect")) {}
+                Button(settings.text("Connect")) {
+                  Task { await model.connect(profileID: connection.id) }
+                }
                 Button(settings.text("Edit…")) {}
+                  .disabled(true)
                 Divider()
-                Button(settings.text("Remove"), role: .destructive) {}
+                Button(settings.text("Remove"), role: .destructive) {
+                  Task { await model.removeConnection(connection.id) }
+                }
               }
           }
         } header: {
@@ -108,16 +113,17 @@ struct SidebarView: View {
       }
 
       DisclosureGroup(isExpanded: $viewsExpanded) {
-        ForEach(model.schemaObjects.filter { $0.kind == .view }) { object in
+        ForEach(
+          model.schemaObjects.filter { $0.kind == .view || $0.kind == .materializedView }
+        ) { object in
           SchemaObjectRow(object: object)
         }
       } label: {
         treeLabel(
-          "Views", symbol: "eye", count: model.schemaObjects.filter { $0.kind == .view }.count)
+          "Views", symbol: "eye",
+          count: model.schemaObjects.filter { $0.kind == .view || $0.kind == .materializedView }
+            .count)
       }
-
-      treeLabel("Functions", symbol: "function", count: 12)
-      treeLabel("Extensions", symbol: "puzzlepiece.extension", count: 8)
     } label: {
       HStack(spacing: 7) {
         Image(systemName: "cylinder")
@@ -126,6 +132,7 @@ struct SidebarView: View {
           .fontWeight(.medium)
         Spacer()
         Button {
+          Task { await model.refreshSchema() }
         } label: {
           Image(systemName: "arrow.clockwise")
             .font(.caption)
@@ -152,11 +159,11 @@ struct SidebarView: View {
   private var sidebarFooter: some View {
     HStack(spacing: 8) {
       Image(systemName: "checkmark.seal.fill")
-        .foregroundStyle(SolnariTheme.mint)
+        .foregroundStyle(SolnariTheme.orange)
       VStack(alignment: .leading, spacing: 1) {
-        Text(settings.text("Codex detected"))
+        Text(settings.text("Codex preview"))
           .font(.caption.weight(.medium))
-        Text(settings.text("App Server ready"))
+        Text(settings.text("Integration planned"))
           .font(.caption2)
           .foregroundStyle(.secondary)
       }
@@ -195,7 +202,7 @@ private struct ConnectionRow: View {
       }
 
       VStack(alignment: .leading, spacing: 2) {
-        Text(settings.text(connection.name))
+        Text(connection.name)
           .font(.system(size: 13, weight: .medium))
           .lineLimit(1)
         Text(connection.subtitle)
@@ -222,7 +229,7 @@ private struct SchemaObjectRow: View {
         .font(.caption)
         .foregroundStyle(object.kind == .view ? SolnariTheme.orange : .secondary)
         .frame(width: 15)
-      Text(object.name)
+      Text(object.schema == "public" ? object.name : object.qualifiedName)
         .font(.system(size: 12))
       Spacer()
       Text(localizedMetadata)

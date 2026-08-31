@@ -49,6 +49,23 @@ struct ContentView: View {
       NewConnectionView()
         .environmentObject(model)
     }
+    .task {
+      await model.activateSelectedConnection()
+    }
+    .onChange(of: model.selectedConnectionID) {
+      Task { await model.activateSelectedConnection() }
+    }
+    .alert(
+      settings.text("Database error"),
+      isPresented: Binding(
+        get: { model.presentedError != nil },
+        set: { if !$0 { model.presentedError = nil } }
+      )
+    ) {
+      Button(settings.text("OK")) { model.presentedError = nil }
+    } message: {
+      Text(settings.text(model.presentedError ?? ""))
+    }
     .tint(SolnariTheme.indigo)
   }
 }

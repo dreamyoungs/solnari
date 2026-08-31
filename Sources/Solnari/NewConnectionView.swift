@@ -10,7 +10,8 @@ struct NewConnectionView: View {
   enum TestState {
     case idle
     case testing
-    case success
+    case success(ConnectionMetadata)
+    case failure(String)
   }
 
   var body: some View {
@@ -37,6 +38,9 @@ struct NewConnectionView: View {
       draft.clientEncoding = "Automatic"
       draft.preferredCharacterSet = "Database default"
       draft.preferredCollation = "Database default"
+    }
+    .onChange(of: draft) {
+      if !isTesting { testState = .idle }
     }
   }
 
@@ -135,7 +139,7 @@ struct NewConnectionView: View {
           SecureField(settings.text("Stored in macOS Keychain"), text: $draft.password)
             .textFieldStyle(.roundedBorder)
         }
-        Toggle(isOn: .constant(true)) {
+        Toggle(isOn: $draft.requiresTLS) {
           Text(settings.text("Require TLS"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,9 +154,9 @@ struct NewConnectionView: View {
           Image(systemName: "checkmark.circle.fill")
             .foregroundStyle(SolnariTheme.mint)
           VStack(alignment: .leading, spacing: 1) {
-            Text(settings.text("Google Cloud authenticated"))
+            Text(settings.text("Google Cloud authentication"))
               .font(.system(size: 12, weight: .medium))
-            Text("harrison@example.com · ADC")
+            Text(settings.text("Application Default Credentials"))
               .font(.caption2)
               .foregroundStyle(.secondary)
           }
@@ -221,7 +225,7 @@ struct NewConnectionView: View {
         Image(systemName: "shippingbox.fill")
           .foregroundStyle(SolnariTheme.indigo)
         VStack(alignment: .leading, spacing: 2) {
-          Text(settings.text("NAVER Cloud Platform detected"))
+          Text(settings.text("Kubernetes relay preview"))
             .font(.system(size: 12, weight: .medium))
           Text(settings.text("The relay pod is removed automatically when the session closes."))
             .font(.caption2)
@@ -246,7 +250,7 @@ struct NewConnectionView: View {
           .font(.caption.weight(.semibold))
         Text(
           settings.text(
-            "Passwords are designed to be stored in Keychain. Codex receives schema metadata and proposed SQL, never connection credentials."
+            "Passwords are stored in Keychain. Codex receives schema metadata and proposed SQL, never connection credentials."
           )
         )
         .font(.caption2)
@@ -412,7 +416,7 @@ struct NewConnectionView: View {
 
   private var clientEncodingOptions: [String] {
     switch draft.engine {
-    case .postgresql: ["Automatic", "UTF8", "EUC_KR", "LATIN1"]
+    case .postgresql: ["Automatic", "UTF8"]
     case .mysql: ["Automatic", "utf8mb4", "euckr", "latin1"]
     case .sqlite: ["Automatic", "UTF-8", "UTF-16le", "UTF-16be"]
     }
@@ -453,40 +457,71 @@ struct NewConnectionView: View {
     HStack {
       switch testState {
       case .idle:
-        Text(settings.text("Test the path before saving."))
-          .foregroundStyle(.secondary)
+        Text(
+          settings.text(
+            draft.isDirectPostgreSQL
+              ? "Test the path before saving."
+              : "Only direct PostgreSQL connections are available right now.")
+        )
+        .foregroundStyle(.secondary)
       case .testing:
         ProgressView().controlSize(.small)
         Text(settings.text("Testing connection…"))
           .foregroundStyle(.secondary)
-      case .success:
-        Label(settings.text("Connected in 34 ms"), systemImage: "checkmark.circle.fill")
-          .foregroundStyle(SolnariTheme.mint)
+      case .success(let metadata):
+        Label(
+          "\(settings.text("Connected in")) \(metadata.latencyMilliseconds) ms",
+          systemImage: "checkmark.circle.fill"
+        )
+        .foregroundStyle(SolnariTheme.mint)
+      case .failure(let message):
+        Label(settings.text(message), systemImage: "exclamationmark.triangle.fill")
+          .foregroundStyle(.red)
+          .lineLimit(2)
+          .frame(maxWidth: 300, alignment: .leading)
       }
       Spacer()
       Button(settings.text("Cancel")) { dismiss() }
         .keyboardShortcut(.cancelAction)
       Button(settings.text("Test connection")) {
         Task {
+          let testedDraft = draft
           testState = .testing
-          try? await Task.sleep(for: .milliseconds(650))
-          testState = .success
+          do {
+            let metadata = try await model.testConnection(testedDraft)
+            testState = draft == testedDraft ? .success(metadata) : .idle
+          } catch {
+            testState = .failure(error.localizedDescription)
+          }
         }
       }
-      .disabled(testState == .testing)
+      .disabled(isTesting || !draft.isValid)
       Button(settings.text("Save & connect")) {
-        model.addConnection(draft)
-        dismiss()
+        Task {
+          let savedDraft = draft
+          testState = .testing
+          do {
+            try await model.saveAndConnect(savedDraft)
+            dismiss()
+          } catch {
+            testState = .failure(error.localizedDescription)
+          }
+        }
       }
       .buttonStyle(.borderedProminent)
       .tint(SolnariTheme.indigo)
-      .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      .disabled(isTesting || !draft.isValid)
     }
     .font(.caption)
     .padding(.horizontal, 22)
     .frame(height: 62)
     .background(SolnariTheme.elevated)
     .overlay(alignment: .top) { Divider() }
+  }
+
+  private var isTesting: Bool {
+    if case .testing = testState { return true }
+    return false
   }
 
   private func formSection<Content: View>(

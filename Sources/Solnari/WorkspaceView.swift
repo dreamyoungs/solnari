@@ -51,7 +51,7 @@ struct WorkspaceView: View {
       if let connection = model.selectedConnection {
         HStack(spacing: 7) {
           StatusDot(color: connection.status.color)
-          Text(settings.text(connection.name))
+          Text(connection.name)
             .font(.system(size: 13, weight: .semibold))
           Image(systemName: "chevron.right")
             .font(.system(size: 9, weight: .bold))
@@ -70,12 +70,16 @@ struct WorkspaceView: View {
       Spacer()
 
       Button {
+        if let profileID = model.selectedConnectionID {
+          Task { await model.connect(profileID: profileID) }
+        }
       } label: {
         Image(systemName: "arrow.triangle.2.circlepath")
       }
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)
       .help(settings.text("Reconnect"))
+      .disabled(model.isConnecting || model.selectedConnectionID == nil)
 
       Button {
       } label: {
@@ -92,17 +96,22 @@ struct WorkspaceView: View {
 
   private var statusBar: some View {
     HStack(spacing: 13) {
-      Label("PostgreSQL 17.2", systemImage: "cylinder")
-      Divider().frame(height: 12)
-      Label(settings.text("Read / Write"), systemImage: "lock.open")
+      if let connection = model.selectedConnection {
+        Label(
+          connection.serverVersion.map { "PostgreSQL \($0)" } ?? connection.engine.rawValue,
+          systemImage: "cylinder")
+        Divider().frame(height: 12)
+        Label(settings.text(connection.status.rawValue), systemImage: "network")
+      } else {
+        Label(settings.text("No connection"), systemImage: "cylinder")
+      }
       Spacer()
       Text(settings.text("Ln 12, Col 10"))
-      Divider().frame(height: 12)
-      Text("UTF-8")
-      Divider().frame(height: 12)
-      HStack(spacing: 5) {
-        StatusDot(color: SolnariTheme.mint, size: 5)
-        Text(settings.text("Session secure"))
+      if let connection = model.selectedConnection {
+        Divider().frame(height: 12)
+        Text(connection.serverEncoding ?? connection.clientEncoding)
+        Divider().frame(height: 12)
+        Text(connection.serverTimeZone ?? TimeZone.current.identifier)
       }
     }
     .font(.system(size: 10))
@@ -267,7 +276,7 @@ private struct SQLEditorPane: View {
       .buttonStyle(.borderedProminent)
       .tint(SolnariTheme.mint)
       .keyboardShortcut(.return, modifiers: .command)
-      .disabled(model.isRunning)
+      .disabled(model.isRunning || model.selectedConnectionID == nil)
 
       Menu {
         Button(settings.text("Run current statement")) {}
@@ -367,21 +376,18 @@ private struct ResultsPane: View {
   @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
 
-  private let columns: [ResultColumn] = [
-    ResultColumn(id: "id", initialWidth: 72, minimumWidth: 58),
-    ResultColumn(id: "name", initialWidth: 142, minimumWidth: 90),
-    ResultColumn(id: "email", initialWidth: 205, minimumWidth: 120),
-    ResultColumn(id: "plan", initialWidth: 105, minimumWidth: 72),
-    ResultColumn(id: "orders", initialWidth: 82, minimumWidth: 68),
-    ResultColumn(id: "revenue", initialWidth: 104, minimumWidth: 80),
-    ResultColumn(id: "created_at", initialWidth: 170, minimumWidth: 126),
-  ]
-
-  @State private var columnWidths: [String: CGFloat] = [
-    "id": 72, "name": 142, "email": 205, "plan": 105,
-    "orders": 82, "revenue": 104, "created_at": 170,
-  ]
+  @State private var columnWidths: [String: CGFloat] = [:]
   @State private var exportNotice: String?
+
+  private var columns: [ResultColumn] {
+    model.queryTable.columns.enumerated().map { index, title in
+      ResultColumn(
+        id: "column-\(index)",
+        initialWidth: min(280, max(100, CGFloat(title.count * 8 + 36))),
+        minimumWidth: 64
+      )
+    }
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -393,6 +399,9 @@ private struct ResultsPane: View {
       }
     }
     .background(SolnariTheme.elevated)
+    .onChange(of: model.queryTable.columns) {
+      resetColumnWidths()
+    }
   }
 
   private var resultToolbar: some View {
@@ -515,12 +524,11 @@ private struct ResultsPane: View {
       Divider()
 
       Button(role: .destructive) {
-        model.queryRows = []
-        model.executionMessage = "No rows"
+        model.clearResults()
       } label: {
         Label(settings.text("Clear results"), systemImage: "trash")
       }
-      .disabled(model.queryRows.isEmpty)
+      .disabled(model.queryTable.rows.isEmpty && model.queryTable.columns.isEmpty)
     } label: {
       Image(systemName: "ellipsis.circle")
         .symbolRenderingMode(.monochrome)
@@ -557,16 +565,20 @@ private struct ResultsPane: View {
   }
 
   private var resultGrid: some View {
-    ResultTableView(rows: model.queryRows, columnWidths: $columnWidths)
-      .overlay {
-        if model.isRunning {
-          ZStack {
-            Color(nsColor: .textBackgroundColor).opacity(0.75)
-            ProgressView("Running query…")
-              .controlSize(.small)
-          }
+    ResultTableView(
+      table: model.queryTable,
+      displayTimeZone: settings.displayTimeZone,
+      columnWidths: $columnWidths
+    )
+    .overlay {
+      if model.isRunning {
+        ZStack {
+          Color(nsColor: .textBackgroundColor).opacity(0.75)
+          ProgressView("Running query…")
+            .controlSize(.small)
         }
       }
+    }
   }
 
   private var explainPlaceholder: some View {
@@ -595,10 +607,10 @@ private struct ResultsPane: View {
 
     for (index, column) in columns.enumerated() {
       let values = table.rows.compactMap { row in
-        row.indices.contains(index) ? row[index].displayValue : nil
+        row.indices.contains(index) ? row[index].displayValue(in: settings.displayTimeZone) : nil
       }
       let longestWidth =
-        ([column.id] + values)
+        ([table.columns[index]] + values)
         .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
         .max() ?? column.initialWidth
       fitted[column.id] = min(360, max(column.minimumWidth, longestWidth + 32))

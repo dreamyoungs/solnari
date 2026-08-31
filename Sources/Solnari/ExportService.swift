@@ -2,28 +2,51 @@ import AppKit
 import Foundation
 
 enum QueryCellValue: Hashable, Sendable {
-  case integer(Int)
-  case decimal(Double)
+  case integer(Int64)
+  case decimal(String)
   case boolean(Bool)
   case text(String)
+  case instant(Date)
+  case localTimestamp(Date)
+  case date(Date)
+  case binary(byteCount: Int)
   case null
 
   var displayValue: String {
+    displayValue(in: .current)
+  }
+
+  func displayValue(in timeZone: TimeZone) -> String {
     switch self {
     case .integer(let value): String(value)
-    case .decimal(let value): String(value)
+    case .decimal(let value): value
     case .boolean(let value): value ? "true" : "false"
     case .text(let value): value
+    case .instant(let value): Self.format(value, timeZone: timeZone, includesOffset: true)
+    case .localTimestamp(let value): Self.format(value, timeZone: .gmt, includesOffset: false)
+    case .date(let value): Self.formatDate(value)
+    case .binary(let byteCount): "<\(byteCount) bytes>"
     case .null: "NULL"
+    }
+  }
+
+  var canonicalValue: String {
+    switch self {
+    case .instant(let value): Self.format(value, timeZone: .gmt, includesOffset: true)
+    case .localTimestamp(let value): Self.format(value, timeZone: .gmt, includesOffset: false)
+    case .date(let value): Self.formatDate(value)
+    default: displayValue
     }
   }
 
   var jsonValue: Any {
     switch self {
     case .integer(let value): value
-    case .decimal(let value): value
+    case .decimal(let value): NSDecimalNumber(string: value)
     case .boolean(let value): value
     case .text(let value): value
+    case .instant, .localTimestamp, .date: canonicalValue
+    case .binary: canonicalValue
     case .null: NSNull()
     }
   }
@@ -31,17 +54,41 @@ enum QueryCellValue: Hashable, Sendable {
   var sqlValue: String {
     switch self {
     case .integer(let value): String(value)
-    case .decimal(let value): String(value)
+    case .decimal(let value): value
     case .boolean(let value): value ? "TRUE" : "FALSE"
     case .text(let value): "'\(value.replacingOccurrences(of: "'", with: "''"))'"
+    case .instant, .localTimestamp, .date:
+      "'\(canonicalValue.replacingOccurrences(of: "'", with: "''"))'"
+    case .binary: "NULL"
     case .null: "NULL"
     }
+  }
+
+  private static func format(_ date: Date, timeZone: TimeZone, includesOffset: Bool) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .iso8601)
+    formatter.timeZone = timeZone
+    formatter.dateFormat =
+      includesOffset ? "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX" : "yyyy-MM-dd HH:mm:ss.SSSSSS"
+    return formatter.string(from: date)
+  }
+
+  private static func formatDate(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .iso8601)
+    formatter.timeZone = .gmt
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.string(from: date)
   }
 }
 
 struct QueryTableData: Hashable, Sendable {
   let columns: [String]
   let rows: [[QueryCellValue]]
+
+  static let empty = QueryTableData(columns: [], rows: [])
 }
 
 enum ExportFormat: String, CaseIterable, Identifiable, Sendable {
@@ -120,7 +167,7 @@ enum ResultExporter {
       escapeDelimited($0, separator: separator, quoteValues: quoteValues)
     }.joined(separator: String(separator))
     let rows = table.rows.map { row in
-      row.map { escapeDelimited($0.displayValue, separator: separator, quoteValues: quoteValues) }
+      row.map { escapeDelimited($0.canonicalValue, separator: separator, quoteValues: quoteValues) }
         .joined(separator: String(separator))
     }
     return ([header] + rows).joined(separator: "\n")
@@ -142,8 +189,9 @@ enum ResultExporter {
   }
 
   private static func json(_ table: QueryTableData, lines: Bool) -> String {
+    let columnNames = uniqueColumnNames(table.columns)
     let objects = table.rows.map { row in
-      Dictionary(uniqueKeysWithValues: zip(table.columns, row.map(\.jsonValue)))
+      Dictionary(uniqueKeysWithValues: zip(columnNames, row.map(\.jsonValue)))
     }
 
     if lines {
@@ -166,7 +214,7 @@ enum ResultExporter {
     let header = "| " + table.columns.map(escapeMarkdown).joined(separator: " | ") + " |"
     let separator = "| " + table.columns.map { _ in "---" }.joined(separator: " | ") + " |"
     let rows = table.rows.map { row in
-      "| " + row.map { escapeMarkdown($0.displayValue) }.joined(separator: " | ") + " |"
+      "| " + row.map { escapeMarkdown($0.canonicalValue) }.joined(separator: " | ") + " |"
     }
     return ([header, separator] + rows).joined(separator: "\n")
   }
@@ -178,11 +226,22 @@ enum ResultExporter {
   }
 
   private static func sqlInsert(_ table: QueryTableData) -> String {
-    let columns = table.columns.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
-      .joined(separator: ", ")
+    let columns = uniqueColumnNames(table.columns).map {
+      "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
+    .joined(separator: ", ")
     return table.rows.map { row in
       "INSERT INTO \"query_result\" (\(columns)) VALUES (\(row.map(\.sqlValue).joined(separator: ", ")));"
     }
     .joined(separator: "\n")
+  }
+
+  private static func uniqueColumnNames(_ columns: [String]) -> [String] {
+    var occurrences: [String: Int] = [:]
+    return columns.map { column in
+      let count = occurrences[column, default: 0] + 1
+      occurrences[column] = count
+      return count == 1 ? column : "\(column)_\(count)"
+    }
   }
 }
