@@ -16,6 +16,7 @@ final class WorkspaceModel: ObservableObject {
   @Published var isConnecting = false
   @Published var executionMessage = "No results"
   @Published var showNewConnection = false
+  @Published private(set) var editingConnectionID: UUID?
   @Published var selectedResultTab = "Results"
   @Published var presentedError: String?
   @Published private(set) var areConnectionOperationsSuspended = false
@@ -72,6 +73,11 @@ final class WorkspaceModel: ObservableObject {
     connections.first { $0.id == selectedConnectionID }
   }
 
+  var editingConnection: ConnectionProfile? {
+    guard let editingConnectionID else { return nil }
+    return connections.first { $0.id == editingConnectionID }
+  }
+
   var selectedTab: EditorTab? {
     editorTabs.first { $0.id == selectedTabID }
   }
@@ -108,37 +114,90 @@ final class WorkspaceModel: ObservableObject {
     }
   }
 
-  func testConnection(_ draft: ConnectionDraft) async throws -> ConnectionMetadata {
-    guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
-    let profile = try draft.makeProfile()
-    return try await backend.testConnection(profile: profile, password: draft.connectionPassword)
+  func beginNewConnection() {
+    editingConnectionID = nil
+    showNewConnection = true
   }
 
-  func saveAndConnect(_ draft: ConnectionDraft) async throws {
+  func beginEditingConnection(_ profileID: UUID) {
+    guard connections.contains(where: { $0.id == profileID }) else { return }
+    editingConnectionID = profileID
+    showNewConnection = true
+  }
+
+  func finishConnectionPresentation() {
+    editingConnectionID = nil
+  }
+
+  func testConnection(
+    _ draft: ConnectionDraft,
+    replacing profileID: UUID? = nil
+  ) async throws -> ConnectionMetadata {
     guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
-    var profile = try draft.makeProfile()
-    let metadata = try await backend.connect(profile: profile, password: draft.connectionPassword)
-    guard !areConnectionOperationsSuspended else {
-      await backend.disconnect(profileID: profile.id)
-      throw SolnariDatabaseError.notConnected
-    }
+    let profile = try draft.makeProfile()
+    let password = try resolvedPassword(for: draft, replacing: profileID)
+    return try await backend.testConnection(profile: profile, password: password)
+  }
+
+  func saveAndConnect(
+    _ draft: ConnectionDraft,
+    replacing profileID: UUID? = nil
+  ) async throws {
+    guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
+    let originalConnections = connections
+    let originalSelection = selectedConnectionID
+    let originalSchema = schemaObjects
+    let existingPassword = try profileID.flatMap { try passwordStore.password(for: $0) }
+    let password = try resolvedPassword(for: draft, replacing: profileID)
+    var profile = try draft.makeProfile(id: profileID ?? UUID())
 
     do {
+      let metadata = try await backend.connect(profile: profile, password: password)
+      guard !areConnectionOperationsSuspended else {
+        throw SolnariDatabaseError.notConnected
+      }
       let loadedSchema = try await backend.loadSchema(profileID: profile.id)
-      try passwordStore.save(draft.connectionPassword, for: profile.id)
+      if draft.transport == .cloudSQL && draft.useIAM {
+        try passwordStore.delete(for: profile.id)
+      } else if !draft.password.isEmpty || profileID == nil {
+        try passwordStore.save(draft.connectionPassword, for: profile.id)
+      }
       apply(metadata, to: &profile)
       profile.status = .connected
-      connections.insert(profile, at: 0)
+      if let index = connections.firstIndex(where: { $0.id == profile.id }) {
+        connections[index] = profile
+      } else {
+        connections.insert(profile, at: 0)
+      }
       selectedConnectionID = profile.id
       try profileStore.save(connections)
       schemaObjects = loadedSchema
     } catch {
       await backend.disconnect(profileID: profile.id)
-      connections.removeAll { $0.id == profile.id }
-      try? passwordStore.delete(for: profile.id)
+      connections = originalConnections
+      if let restoredIndex = connections.firstIndex(where: { $0.id == profile.id }) {
+        connections[restoredIndex].status = .disconnected
+      }
+      selectedConnectionID = originalSelection
+      schemaObjects = originalSelection == profile.id ? [] : originalSchema
+      if let existingPassword {
+        try? passwordStore.save(existingPassword, for: profile.id)
+      } else {
+        try? passwordStore.delete(for: profile.id)
+      }
       try? profileStore.save(connections)
       throw error
     }
+  }
+
+  private func resolvedPassword(
+    for draft: ConnectionDraft,
+    replacing profileID: UUID?
+  ) throws -> String {
+    if draft.transport == .cloudSQL && draft.useIAM { return "" }
+    if !draft.password.isEmpty { return draft.password }
+    guard let profileID else { return "" }
+    return try passwordStore.password(for: profileID) ?? ""
   }
 
   func activateSelectedConnection() async {

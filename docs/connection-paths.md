@@ -20,6 +20,12 @@ password. PostgreSQL uses the full user email (or a service-account email withou
 not expose its principal, Solnari suggests the active gcloud account and asks the user to verify
 that it matches ADC. Built-in database authentication keeps the password in Keychain.
 
+After a project ID is entered, Solnari can use an ADC access token in memory to query the Cloud SQL
+Admin API for supported PostgreSQL and MySQL instances and their databases. The token is sent only
+in the authorization header, is never added to a URL or persisted, and manual region, instance, and
+database entry remains available when discovery is unavailable or intentionally not permitted.
+Discovery currently obtains the in-memory ADC access token through the installed `gcloud` CLI.
+
 Install `cloud-sql-proxy` and authenticate Application Default Credentials before connecting. Use
 `SOLNARI_CLOUD_SQL_PROXY` to point Solnari at a nonstandard binary location.
 

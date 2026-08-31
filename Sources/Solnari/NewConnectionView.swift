@@ -5,13 +5,25 @@ struct NewConnectionView: View {
   @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
   @Environment(\.dismiss) private var dismiss
-  @State private var draft = ConnectionDraft()
+  private let existingProfileID: UUID?
+  @State private var draft: ConnectionDraft
   @State private var testState: TestState = .idle
   @State private var adcIdentityState: ADCIdentityState = .idle
   @State private var autoFilledIAMUsername: String?
+  @State private var cloudInstances: [CloudSQLInstanceSummary] = []
+  @State private var cloudDatabases: [String] = []
+  @State private var cloudDiscoveryState: CloudDiscoveryState = .idle
+  @State private var discoveredProject = ""
   @FocusState private var focusedField: FocusedField?
 
   private static let googleCloudIdentityResolver = GoogleCloudIdentityResolver()
+  private static let cloudSQLDiscoveryService = GoogleCloudSQLDiscoveryService()
+
+  init(profile: ConnectionProfile? = nil) {
+    existingProfileID = profile?.id
+    _draft = State(
+      initialValue: profile.map { ConnectionDraft(profile: $0) } ?? ConnectionDraft())
+  }
 
   private enum FocusedField: Hashable {
     case connectionName
@@ -29,6 +41,13 @@ struct NewConnectionView: View {
     case resolving
     case resolved(GoogleCloudIdentity)
     case unavailable
+  }
+
+  private enum CloudDiscoveryState: Equatable {
+    case idle
+    case loadingInstances
+    case loadingDatabases
+    case failure(String)
   }
 
   var body: some View {
@@ -83,12 +102,20 @@ struct NewConnectionView: View {
         adcIdentityState = .idle
       }
     }
+    .onChange(of: draft.cloudProject) {
+      let project = draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard project != discoveredProject else { return }
+      cloudInstances = []
+      cloudDatabases = []
+      cloudDiscoveryState = .idle
+    }
     .onChange(of: draft) {
       guard !isTesting, testState != .idle else { return }
       testState = .idle
     }
     .onAppear {
       focusedField = .connectionName
+      Task { await resolveADCIdentityIfNeeded() }
     }
   }
 
@@ -96,11 +123,17 @@ struct NewConnectionView: View {
     HStack(spacing: 12) {
       SolnariMark(size: 34)
       VStack(alignment: .leading, spacing: 2) {
-        Text(settings.text("New connection"))
+        Text(settings.text(existingProfileID == nil ? "New connection" : "Edit connection"))
           .font(.title3.weight(.semibold))
-        Text(settings.text("Connect a database through the path that fits your environment."))
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        Text(
+          settings.text(
+            existingProfileID == nil
+              ? "Connect a database through the path that fits your environment."
+              : "Update the connection settings and reconnect safely."
+          )
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
       }
       Spacer()
       Button {
@@ -227,8 +260,34 @@ struct NewConnectionView: View {
       .background(
         SolnariTheme.mint.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-      HStack(spacing: 14) {
+      HStack(alignment: .bottom, spacing: 10) {
         labeledField("Project", placeholder: "project-id", text: $draft.cloudProject)
+        Button {
+          Task { await loadCloudInstances() }
+        } label: {
+          Label(settings.text("Load instances"), systemImage: "arrow.clockwise")
+        }
+        .disabled(
+          isDiscovering
+            || draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+      }
+
+      if !cloudInstances.isEmpty {
+        VStack(alignment: .leading, spacing: 7) {
+          fieldLabel("Available instances")
+          Picker("", selection: cloudInstanceSelection) {
+            Text(settings.text("Choose an instance…")).tag("")
+            ForEach(cloudInstances) { instance in
+              Text("\(instance.name) · \(instance.region) · \(instance.engine.rawValue)")
+                .tag(instance.name)
+            }
+          }
+          .labelsHidden()
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+
+      HStack(spacing: 14) {
         labeledField("Region", placeholder: "asia-northeast3", text: $draft.cloudRegion)
         labeledField("Cloud SQL instance", placeholder: "instance", text: $draft.cloudInstance)
       }
@@ -240,6 +299,20 @@ struct NewConnectionView: View {
           text: $draft.user
         )
       }
+      if !cloudDatabases.isEmpty {
+        VStack(alignment: .leading, spacing: 7) {
+          fieldLabel("Available databases")
+          Picker("", selection: $draft.database) {
+            Text(settings.text("Choose a database…")).tag("")
+            ForEach(cloudDatabases, id: \.self) { database in
+              Text(database).tag(database)
+            }
+          }
+          .labelsHidden()
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+      cloudDiscoveryStatus
       Toggle(isOn: $draft.useIAM) {
         Text(settings.text("Use automatic IAM database authentication"))
       }
@@ -252,6 +325,33 @@ struct NewConnectionView: View {
       } else {
         passwordField
       }
+    }
+  }
+
+  @ViewBuilder
+  private var cloudDiscoveryStatus: some View {
+    switch cloudDiscoveryState {
+    case .idle:
+      if discoveredProject.isEmpty == false, cloudInstances.isEmpty {
+        Label(settings.text("No supported Cloud SQL instances found."), systemImage: "info.circle")
+          .foregroundStyle(.secondary)
+      }
+    case .loadingInstances:
+      HStack(spacing: 7) {
+        ProgressView().controlSize(.small)
+        Text(settings.text("Loading Cloud SQL instances…"))
+      }
+      .foregroundStyle(.secondary)
+    case .loadingDatabases:
+      HStack(spacing: 7) {
+        ProgressView().controlSize(.small)
+        Text(settings.text("Loading databases…"))
+      }
+      .foregroundStyle(.secondary)
+    case .failure(let message):
+      Label(settings.text(message), systemImage: "exclamationmark.triangle.fill")
+        .foregroundStyle(SolnariTheme.orange)
+        .fixedSize(horizontal: false, vertical: true)
     }
   }
 
@@ -717,7 +817,10 @@ struct NewConnectionView: View {
           let testedDraft = draft
           testState = .testing
           do {
-            let metadata = try await model.testConnection(testedDraft)
+            let metadata = try await model.testConnection(
+              testedDraft,
+              replacing: existingProfileID
+            )
             testState = draft == testedDraft ? .success(metadata) : .idle
           } catch {
             testState = draft == testedDraft ? .failure(error.localizedDescription) : .idle
@@ -725,12 +828,12 @@ struct NewConnectionView: View {
         }
       }
       .disabled(isTesting || !draft.isValid)
-      Button(settings.text("Save & connect")) {
+      Button(settings.text(existingProfileID == nil ? "Save & connect" : "Save & reconnect")) {
         Task {
           let savedDraft = draft
           testState = .testing
           do {
-            try await model.saveAndConnect(savedDraft)
+            try await model.saveAndConnect(savedDraft, replacing: existingProfileID)
             dismiss()
           } catch {
             testState = .failure(error.localizedDescription)
@@ -751,6 +854,10 @@ struct NewConnectionView: View {
   private var isTesting: Bool {
     if case .testing = testState { return true }
     return false
+  }
+
+  private var isDiscovering: Bool {
+    cloudDiscoveryState == .loadingInstances || cloudDiscoveryState == .loadingDatabases
   }
 
   private func formSection<Content: View>(
@@ -845,8 +952,15 @@ struct NewConnectionView: View {
   private var passwordField: some View {
     VStack(alignment: .leading, spacing: 7) {
       fieldLabel("Password")
-      SecureField(settings.text("Stored in macOS Keychain"), text: $draft.password)
-        .textFieldStyle(.roundedBorder)
+      SecureField(
+        settings.text(
+          existingProfileID == nil
+            ? "Stored in macOS Keychain"
+            : "Leave blank to keep the saved password"
+        ),
+        text: $draft.password
+      )
+      .textFieldStyle(.roundedBorder)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -857,6 +971,74 @@ struct NewConnectionView: View {
 
   private var iamDatabaseUserPlaceholder: String {
     draft.engine == .mysql ? "user" : "user@example.com"
+  }
+
+  private var cloudInstanceSelection: Binding<String> {
+    Binding(
+      get: { draft.cloudInstance },
+      set: { instanceName in
+        guard !instanceName.isEmpty else { return }
+        selectCloudInstance(named: instanceName)
+      }
+    )
+  }
+
+  private func loadCloudInstances() async {
+    let project = draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines)
+    cloudDiscoveryState = .loadingInstances
+    do {
+      let instances = try await Self.cloudSQLDiscoveryService.instances(project: project)
+      guard draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines) == project else {
+        return
+      }
+      discoveredProject = project
+      cloudInstances = instances
+      cloudDatabases = []
+      cloudDiscoveryState = .idle
+
+      if instances.contains(where: { $0.name == draft.cloudInstance }) {
+        selectCloudInstance(named: draft.cloudInstance)
+      } else if instances.count == 1, let instance = instances.first {
+        selectCloudInstance(named: instance.name)
+      }
+    } catch {
+      guard draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines) == project else {
+        return
+      }
+      cloudInstances = []
+      cloudDatabases = []
+      cloudDiscoveryState = .failure(error.localizedDescription)
+    }
+  }
+
+  private func selectCloudInstance(named instanceName: String) {
+    guard let instance = cloudInstances.first(where: { $0.name == instanceName }) else { return }
+    draft.cloudInstance = instance.name
+    draft.cloudRegion = instance.region
+    draft.engine = instance.engine
+    cloudDatabases = []
+    Task { await loadCloudDatabases(for: instance.name) }
+  }
+
+  private func loadCloudDatabases(for instanceName: String) async {
+    let project = draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines)
+    cloudDiscoveryState = .loadingDatabases
+    do {
+      let databases = try await Self.cloudSQLDiscoveryService.databases(
+        project: project,
+        instance: instanceName
+      )
+      guard
+        draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines) == project,
+        draft.cloudInstance == instanceName
+      else { return }
+      cloudDatabases = databases
+      cloudDiscoveryState = .idle
+    } catch {
+      guard draft.cloudInstance == instanceName else { return }
+      cloudDatabases = []
+      cloudDiscoveryState = .failure(error.localizedDescription)
+    }
   }
 
   private func resolveADCIdentityIfNeeded() async {

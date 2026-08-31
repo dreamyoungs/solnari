@@ -37,8 +37,9 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 
 - PostgreSQL, MySQL, SQLite 연결 테스트와 실제 세션 연결
 - 사용자 스키마·테이블·뷰 탐색과 동적 쿼리 실행
-- Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, Kubernetes 임시 relay 경로
-- ADC 기반 Cloud SQL 자동 IAM 인증과 엔진별 IAM DB 사용자명 제안
+- Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, Kubernetes 기존 리소스·임시 relay 경로
+- ADC 기반 Cloud SQL 자동 IAM 인증, 엔진별 IAM DB 사용자명 제안, 프로젝트 리소스 조회
+- 저장된 연결의 편집·재연결과 확인 절차가 있는 삭제
 - 민감 연결 profile과 비밀번호의 device-only macOS Keychain 저장, opaque local index
 - 다중 탭 SQL editor와 크기 조절 가능한 editor/result layout
 - 컬럼 크기 조절과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
@@ -54,13 +55,13 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 
 | 데이터베이스 | Direct | Cloud SQL | SSH | Kubernetes |
 | --- | --- | --- | --- | --- |
-| PostgreSQL | 지원 | 지원 | 지원 | 임시 relay · 실험적 |
-| MySQL | 지원 | 지원 | 지원 | 임시 relay · 실험적 |
+| PostgreSQL | 지원 | 지원 | 지원 | 기존 리소스 · 임시 relay |
+| MySQL | 지원 | 지원 | 지원 | 기존 리소스 · 임시 relay |
 | SQLite | 파일 연결 | 해당 없음 | 해당 없음 | 해당 없음 |
 
-현재 Kubernetes 경로는 세션용 relay Pod를 만들고 삭제하므로 Pod 생성·삭제 권한이
-필요합니다. 향후 조직 관리형 연결은 이 경로와 분리하여, 미리 배포되고 검증된
-Service/Pod에 `pods/portforward` 최소 권한으로만 연결할 예정입니다.
+Kubernetes는 기존 Service/Pod에 `pods/portforward` 최소 권한으로 연결하는 경로를
+우선 제공합니다. 임시 relay는 명시적으로 선택하는 실험 기능이며, 이 경우에만 세션용
+Pod 생성·삭제 권한이 추가로 필요합니다.
 
 ## 솔나리가 지향하는 방향
 
@@ -90,14 +91,13 @@ Service/Pod에 `pods/portforward` 최소 권한으로만 연결할 예정입니�
 
 ## 아직 구현 중입니다
 
-- 기존 Kubernetes Service/Pod 검증과 최소 권한 port-forward
 - 조직 관리형 policy profile과 서명·무결성 검증
 - 연결 idle/max lifetime, 강제 종료 뒤 orphan process 복구
 - dialect-aware SQL parser, 공통 timeout, query cancel과 결과/export 상한
 - 운영 DML/DDL 승인과 일회성 write capability
 - 실제 Codex App Server 및 정책에 제한된 MCP capability
 - Developer ID 서명, notarization과 GitHub Release 자동 배포
-- 테이블 데이터 보기·수정, 연결 정보 편집과 더 넓은 DB 객체 탐색
+- 테이블 데이터 보기·수정과 더 넓은 DB 객체 탐색
 
 진행 중인 항목을 현재 보장처럼 표시하지 않는 것을 프로젝트 문서 원칙으로 삼습니다.
 
@@ -111,7 +111,8 @@ GitHub Release에서 내려받을 수 있는 서명·notarization된 앱은 아�
 - macOS 14 이상
 - Swift 6.1 이상 또는 호환되는 Xcode toolchain
 
-선택한 연결 경로에 따라 `cloud-sql-proxy`, OpenSSH 또는 `kubectl`이 필요합니다.
+선택한 연결 경로에 따라 `cloud-sql-proxy`, OpenSSH 또는 `kubectl`이 필요합니다. Cloud SQL
+프로젝트 리소스 조회에는 ADC access token을 발급하는 Google Cloud CLI(`gcloud`)가 필요합니다.
 
 ### 빌드하고 실행하기
 

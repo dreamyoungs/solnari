@@ -37,7 +37,7 @@ struct ContentView: View {
         .help(settings.text("Toggle Codex"))
 
         Button {
-          model.showNewConnection = true
+          model.beginNewConnection()
         } label: {
           Label(settings.text("New Connection"), systemImage: "plus")
         }
@@ -45,8 +45,11 @@ struct ContentView: View {
         .tint(SolnariTheme.indigo)
       }
     }
-    .sheet(isPresented: $model.showNewConnection) {
-      NewConnectionView()
+    .sheet(
+      isPresented: $model.showNewConnection,
+      onDismiss: { model.finishConnectionPresentation() }
+    ) {
+      NewConnectionView(profile: model.editingConnection)
         .environmentObject(model)
     }
     .task {

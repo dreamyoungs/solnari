@@ -36,8 +36,9 @@ Solnari now aims to be:
 
 - Live PostgreSQL, MySQL, and SQLite connection testing and sessions
 - Schema, table, and view discovery with dynamic query execution
-- Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, and experimental Kubernetes relay paths
-- ADC-based Cloud SQL automatic IAM authentication with engine-aware database-user suggestions
+- Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, and existing-resource or relay Kubernetes paths
+- ADC-based Cloud SQL automatic IAM authentication, engine-aware user suggestions, and project discovery
+- Saved-connection editing and reconnecting, with confirmation before deletion
 - Sensitive profiles and passwords in device-only macOS Keychain with an opaque local index
 - Multi-tab SQL editor and resizable editor/result layout
 - AppKit result grid with resizable columns and multi-row selection
@@ -53,13 +54,13 @@ Solnari now aims to be:
 
 | Database | Direct | Cloud SQL | SSH | Kubernetes |
 | --- | --- | --- | --- | --- |
-| PostgreSQL | Available | Available | Available | Experimental relay |
-| MySQL | Available | Available | Available | Experimental relay |
+| PostgreSQL | Available | Available | Available | Existing resource · relay |
+| MySQL | Available | Available | Available | Existing resource · relay |
 | SQLite | File | Not applicable | Not applicable | Not applicable |
 
-The current Kubernetes path creates and removes a relay Pod and therefore requires Pod lifecycle
-permissions. A separate organization-managed path is planned for strictly validated, pre-existing
-Services or Pods using only the minimum `pods/portforward` access.
+Kubernetes prefers a pre-existing Service or Pod using minimum `pods/portforward` access. The
+temporary relay is an explicitly selected experimental mode and additionally requires Pod lifecycle
+permissions.
 
 ## Product direction
 
@@ -80,18 +81,20 @@ See the [backend architecture](docs/backend-architecture.md),
 
 ## In progress
 
-- Existing-resource Kubernetes port-forward with fail-closed identity validation
 - Versioned and eventually signed organization policy profiles
 - Idle/max session lifetime and orphan recovery after forced termination
 - A dialect-aware SQL parser, consistent timeouts, query cancellation, and result/export limits
 - Production write approval and one-time write capabilities
 - Codex App Server and policy-limited MCP capabilities
 - Developer ID signing, notarization, and GitHub Release automation
-- Table data viewing/editing, connection editing, and broader object exploration
+- Table data viewing/editing and broader object exploration
 
 ## Build and run
 
 Requirements: macOS 14 or newer and a Swift 6.1-compatible toolchain.
+
+Connection paths may require `cloud-sql-proxy`, OpenSSH, or `kubectl`. Cloud SQL project discovery
+also requires the Google Cloud CLI (`gcloud`) to mint an ADC access token.
 
 ```bash
 git clone https://github.com/dreamyoungs/solnari.git

@@ -104,6 +104,44 @@ struct ConnectionProfileStoreTests {
     #expect(draft.isValid)
   }
 
+  @Test("저장된 Cloud SQL 프로필은 비밀정보 없이 편집 초안으로 복원된다")
+  func cloudSQLProfileRestoresAsEditableDraftWithoutPassword() throws {
+    let profile = ConnectionProfile(
+      name: "Production Cloud SQL",
+      database: "orders",
+      engine: .postgresql,
+      transport: .cloudSQL,
+      host: "127.0.0.1",
+      port: 5432,
+      username: "developer@example.com",
+      requiresTLS: false,
+      clientEncoding: "UTF8",
+      cloudSQL: CloudSQLConfiguration(
+        project: "solnari-production",
+        region: "asia-northeast3",
+        instance: "orders-primary",
+        useIAMAuthentication: true
+      ),
+      preferredCharacterSet: "UTF8",
+      preferredCollation: "ko-KR-x-icu",
+      auditTextSettings: true,
+      securityPolicy: .standard,
+      accessLevel: .readOnly
+    )
+
+    let draft = ConnectionDraft(profile: profile)
+
+    #expect(draft.name == profile.name)
+    #expect(draft.cloudProject == "solnari-production")
+    #expect(draft.cloudRegion == "asia-northeast3")
+    #expect(draft.cloudInstance == "orders-primary")
+    #expect(draft.useIAM)
+    #expect(draft.password.isEmpty)
+    #expect(draft.securityPolicy == .standard)
+    #expect(draft.accessLevel == .readOnly)
+    #expect(try draft.makeProfile(id: profile.id).id == profile.id)
+  }
+
   @Test("기존 v1 프로필은 새 경로 설정이 없어도 마이그레이션 없이 읽힌다")
   func legacyProfileDecodesWithoutTransportDetails() throws {
     let json = """

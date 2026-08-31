@@ -8,6 +8,7 @@ struct SidebarView: View {
   @State private var schemasExpanded = true
   @State private var tablesExpanded = true
   @State private var viewsExpanded = true
+  @State private var connectionPendingRemoval: ConnectionProfile?
 
   private var filteredConnections: [ConnectionProfile] {
     guard !searchText.isEmpty else { return model.connections }
@@ -24,23 +25,29 @@ struct SidebarView: View {
       List(selection: $model.selectedConnectionID) {
         Section {
           ForEach(filteredConnections) { connection in
-            ConnectionRow(connection: connection)
-              .tag(connection.id)
-              .contextMenu {
-                Button(settings.text("Connect")) {
-                  Task { await model.connect(profileID: connection.id) }
-                }
-                Button(settings.text("Edit…")) {}
-                  .disabled(true)
-                Divider()
-                Button(settings.text("Remove"), role: .destructive) {
-                  Task { await model.removeConnection(connection.id) }
-                }
+            ConnectionRow(
+              connection: connection,
+              onConnect: { Task { await model.connect(profileID: connection.id) } },
+              onEdit: { model.beginEditingConnection(connection.id) },
+              onRemove: { connectionPendingRemoval = connection }
+            )
+            .tag(connection.id)
+            .contextMenu {
+              Button(settings.text("Connect")) {
+                Task { await model.connect(profileID: connection.id) }
               }
+              Button(settings.text("Edit…")) {
+                model.beginEditingConnection(connection.id)
+              }
+              Divider()
+              Button(settings.text("Remove"), role: .destructive) {
+                connectionPendingRemoval = connection
+              }
+            }
           }
         } header: {
           sectionHeader("Connections", count: filteredConnections.count) {
-            model.showNewConnection = true
+            model.beginNewConnection()
           }
         }
 
@@ -60,6 +67,30 @@ struct SidebarView: View {
       sidebarFooter
     }
     .background(SolnariTheme.sidebar)
+    .confirmationDialog(
+      settings.text("Remove connection?"),
+      isPresented: Binding(
+        get: { connectionPendingRemoval != nil },
+        set: { if !$0 { connectionPendingRemoval = nil } }
+      ),
+      titleVisibility: .visible,
+      presenting: connectionPendingRemoval
+    ) { connection in
+      Button(settings.text("Remove"), role: .destructive) {
+        connectionPendingRemoval = nil
+        Task { await model.removeConnection(connection.id) }
+      }
+      Button(settings.text("Cancel"), role: .cancel) {
+        connectionPendingRemoval = nil
+      }
+    } message: { connection in
+      Text(
+        String(
+          format: settings.text("Remove “%@” and its saved Keychain credentials?"),
+          connection.name
+        )
+      )
+    }
   }
 
   private var brandHeader: some View {
@@ -185,6 +216,9 @@ struct SidebarView: View {
 private struct ConnectionRow: View {
   @EnvironmentObject private var settings: AppSettings
   let connection: ConnectionProfile
+  let onConnect: () -> Void
+  let onEdit: () -> Void
+  let onRemove: () -> Void
 
   var body: some View {
     HStack(spacing: 10) {
@@ -214,6 +248,19 @@ private struct ConnectionRow: View {
       Image(systemName: connection.transport.symbol)
         .font(.caption2)
         .foregroundStyle(.tertiary)
+      Menu {
+        Button(settings.text("Connect"), action: onConnect)
+        Button(settings.text("Edit…"), action: onEdit)
+        Divider()
+        Button(settings.text("Remove"), role: .destructive, action: onRemove)
+      } label: {
+        Image(systemName: "ellipsis")
+          .frame(width: 18, height: 18)
+      }
+      .menuStyle(.borderlessButton)
+      .menuIndicator(.hidden)
+      .fixedSize()
+      .help(settings.text("Connection actions"))
     }
     .padding(.vertical, 3)
   }

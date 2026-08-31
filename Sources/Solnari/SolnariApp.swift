@@ -161,7 +161,7 @@ struct SolnariApp: App {
     .commands {
       CommandGroup(replacing: .newItem) {
         Button(settings.text("New Connection")) {
-          workspace.showNewConnection = true
+          workspace.beginNewConnection()
         }
         .keyboardShortcut("n", modifiers: .command)
       }

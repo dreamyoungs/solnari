@@ -382,6 +382,46 @@ struct ConnectionDraft: Equatable, Sendable {
   var securityPolicy: ConnectionSecurityPolicy = .localDevelopment
   var accessLevel: DatabaseAccessLevel = .readWrite
 
+  init() {}
+
+  init(profile: ConnectionProfile) {
+    name = profile.name
+    engine = profile.engine
+    transport = profile.transport
+    host = profile.host
+    port = profile.engine == .sqlite ? "" : String(profile.port)
+    database = profile.database
+    user = profile.username
+    requiresTLS = profile.requiresTLS
+    if let cloudSQL = profile.cloudSQL {
+      cloudProject = cloudSQL.project
+      cloudRegion = cloudSQL.region
+      cloudInstance = cloudSQL.instance
+      useIAM = cloudSQL.useIAMAuthentication
+    }
+    if let ssh = profile.ssh {
+      sshHost = ssh.host
+      sshPort = String(ssh.port)
+      sshUser = ssh.username
+    }
+    if let kubernetes = profile.kubernetes {
+      kubeContext = kubernetes.context
+      namespace = kubernetes.namespace
+      kubernetesMode = kubernetes.effectiveConnectionMode
+      kubernetesResourceKind = kubernetes.resourceKind ?? .service
+      kubernetesResourceName = kubernetes.resourceName ?? ""
+      kubernetesRemotePort = String(
+        kubernetes.remotePort ?? (profile.engine == .mysql ? 3306 : 5432))
+      relayImage = kubernetes.relayImage
+    }
+    clientEncoding = profile.clientEncoding
+    preferredCharacterSet = profile.preferredCharacterSet ?? "Database default"
+    preferredCollation = profile.preferredCollation ?? "Database default"
+    auditTextSettings = profile.auditTextSettings ?? true
+    securityPolicy = profile.effectiveSecurityPolicy
+    accessLevel = profile.effectiveAccessLevel
+  }
+
   var supportsSelectedTransport: Bool {
     engine != .sqlite || transport == .direct
   }
