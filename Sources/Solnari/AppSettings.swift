@@ -28,6 +28,12 @@ enum DisplayTimeZoneOption: String, CaseIterable, Identifiable {
   }
 }
 
+enum SettingsTab: Hashable {
+  case general
+  case mcp
+  case about
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
   private static let languageKey = "solnari.language"
@@ -44,6 +50,8 @@ final class AppSettings: ObservableObject {
       UserDefaults.standard.set(displayTimeZoneOption.rawValue, forKey: Self.displayTimeZoneKey)
     }
   }
+
+  @Published var selectedSettingsTab: SettingsTab = .general
 
   init() {
     let stored = UserDefaults.standard.string(forKey: Self.languageKey)

@@ -425,6 +425,64 @@ final class WorkspaceModel: ObservableObject {
     )
   }
 
+  func mcpSelectedProfile() throws -> ConnectionProfile {
+    guard let selectedConnection else { throw MCPAccessError.noSelectedConnection }
+    return selectedConnection
+  }
+
+  func mcpSchemaSnapshot() async throws -> [SchemaObject] {
+    let profile = try requireMCPConnection()
+    let objects = try await backend.loadSchema(profileID: profile.id)
+    if selectedConnectionID == profile.id {
+      schemaObjects = objects
+    }
+    return objects
+  }
+
+  func mcpDescribeObject(
+    schema: String,
+    name: String,
+    kind: SchemaObjectKind?
+  ) async throws -> SchemaObjectDetails {
+    let profile = try requireMCPConnection()
+    let objects = try await backend.loadSchema(profileID: profile.id)
+    guard
+      let object = objects.first(where: {
+        $0.schema == schema && $0.name == name && (kind == nil || $0.kind == kind)
+      })
+    else {
+      throw MCPAccessError.schemaObjectNotFound
+    }
+    return try await backend.loadSchemaObjectDetails(profileID: profile.id, object: object)
+  }
+
+  func mcpExecuteReadOnlyQuery(sql: String, maximumRows: Int) async throws -> MCPQuerySnapshot {
+    let profile = try requireMCPConnection()
+    guard profile.effectiveAccessLevel == .readOnly else {
+      throw MCPAccessError.readOnlyConnectionRequired
+    }
+    guard !isRunning else { throw MCPAccessError.queryAlreadyRunning }
+    try QuerySafetyPolicy.validate(sql: sql, accessLevel: .readOnly)
+    isRunning = true
+    defer { isRunning = false }
+    let result = try await backend.execute(profileID: profile.id, sql: sql)
+    let rows = result.table.rows.prefix(maximumRows)
+    return MCPQuerySnapshot(
+      columns: result.table.columns,
+      rows: rows.map { $0.map(MCPQueryCell.init) },
+      returnedRowCount: rows.count,
+      truncated: result.table.rows.count > maximumRows,
+      durationMilliseconds: result.durationMilliseconds
+    )
+  }
+
+  private func requireMCPConnection() throws -> ConnectionProfile {
+    guard !areConnectionOperationsSuspended else { throw MCPAccessError.connectionNotReady }
+    let profile = try mcpSelectedProfile()
+    guard profile.status == .connected else { throw MCPAccessError.connectionNotReady }
+    return profile
+  }
+
   private func apply(_ metadata: ConnectionMetadata, to profile: inout ConnectionProfile) {
     profile.database = metadata.database
     profile.latency = metadata.latencyMilliseconds

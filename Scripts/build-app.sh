@@ -17,9 +17,11 @@ if [[ -z "$node_executable" || ! -x "$node_executable" ]]; then
   print -u2 "Node.js 24 or newer is required to build Solnari."
   exit 69
 fi
-node_major="$($node_executable -p 'Number(process.versions.node.split(`.`)[0])')"
-if [[ "$node_major" -lt 24 ]]; then
-  print -u2 "Node.js 24 or newer is required to build Solnari."
+node_executable="${node_executable:A}"
+required_node_version="$(<"$repository_root/.node-version")"
+actual_node_version="$($node_executable -p 'process.versions.node')"
+if [[ "$actual_node_version" != "$required_node_version" ]]; then
+  print -u2 "Node.js $required_node_version is required to build Solnari (found $actual_node_version)."
   exit 69
 fi
 npm --prefix "$repository_root/backend" run build
@@ -38,7 +40,8 @@ staged_application="$staging_directory/Solnari.app"
 mkdir -p \
   "$staged_application/Contents/MacOS" \
   "$staged_application/Contents/Resources/Node/bin" \
-  "$staged_application/Contents/Resources/NodeBackend"
+  "$staged_application/Contents/Resources/NodeBackend" \
+  "$staged_application/Contents/Resources/Licenses"
 /usr/bin/ditto "$binary_directory/Solnari" "$staged_application/Contents/MacOS/Solnari"
 /usr/bin/ditto "$repository_root/App/Info.plist" "$staged_application/Contents/Info.plist"
 /usr/bin/ditto "$node_executable" "$staged_application/Contents/Resources/Node/bin/node"
@@ -47,8 +50,26 @@ mkdir -p \
   "$repository_root/backend/dist/server.cjs" \
   "$staged_application/Contents/Resources/NodeBackend/server.cjs"
 /usr/bin/ditto \
+  "$repository_root/backend/dist/mcp-server.cjs" \
+  "$staged_application/Contents/Resources/NodeBackend/mcp-server.cjs"
+/usr/bin/ditto \
   "$repository_root/backend/src/subprocess-guard.cjs" \
   "$staged_application/Contents/Resources/NodeBackend/subprocess-guard.cjs"
+/usr/bin/ditto \
+  "$repository_root/LICENSE" \
+  "$staged_application/Contents/Resources/Licenses/Solnari-LICENSE.txt"
+
+node_license="${node_executable:h:h}/LICENSE"
+if [[ ! -f "$node_license" ]]; then
+  print -u2 "The selected Node.js installation does not include its LICENSE file."
+  exit 66
+fi
+"$node_executable" "$repository_root/Scripts/collect-licenses.mjs" \
+  "$node_license" \
+  "$repository_root/backend/package-lock.json" \
+  "$repository_root/backend/node_modules" \
+  "$repository_root/.build/checkouts" \
+  "$staged_application/Contents/Resources/Licenses/THIRD-PARTY-NOTICES.txt"
 
 resource_bundle="$binary_directory/Solnari_Solnari.bundle"
 if [[ -d "$resource_bundle" ]]; then
@@ -80,14 +101,26 @@ done
   --output "$staged_application/Contents/Resources/Solnari.icns"
 
 signing_identity="${SOLNARI_CODESIGN_IDENTITY:--}"
-codesign_arguments=(--force --deep --sign "$signing_identity" --timestamp=none)
+node_codesign_arguments=(--force --sign "$signing_identity")
+app_codesign_arguments=(--force --sign "$signing_identity")
 if [[ "$signing_identity" == "-" ]]; then
-  codesign_arguments+=(
+  node_codesign_arguments+=(--timestamp=none)
+  app_codesign_arguments+=(
+    --timestamp=none
     --requirements
     '=designated => identifier "com.dreamyoungs.solnari"'
   )
+else
+  node_codesign_arguments+=(
+    --timestamp
+    --options runtime
+    --entitlements "$repository_root/App/Node.entitlements"
+  )
+  app_codesign_arguments+=(--timestamp --options runtime)
 fi
-/usr/bin/codesign "${codesign_arguments[@]}" "$staged_application"
+/usr/bin/codesign "${node_codesign_arguments[@]}" \
+  "$staged_application/Contents/Resources/Node/bin/node"
+/usr/bin/codesign "${app_codesign_arguments[@]}" "$staged_application"
 mkdir -p "$output_directory"
 if [[ -e "$application_path" ]]; then
   rm -rf "$application_path"

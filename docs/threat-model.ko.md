@@ -1,7 +1,7 @@
 # Solnari 위협 모델
 
 > 상태: 구현과 함께 갱신되는 초안
-> 범위: macOS desktop app, database driver, local helper process, provider credential과 향후 Agent/MCP 경계
+> 범위: macOS desktop app, database driver, local helper process, provider credential과 Agent/MCP 경계
 
 ## 보호할 자산
 
@@ -21,8 +21,10 @@
   → private 또는 local network path
   → database role
 
-향후 Agent
-  → 제한된 Solnari MCP capability
+외부 local Agent
+  → bundled STDIO MCP server
+  → 사용자 전용 local socket
+  → 현재 선택한 Solnari read-only capability
   → 동일한 policy와 approval 검증
   → 위의 session 경계
 ```
@@ -53,6 +55,7 @@ policy와 database role이 강제해야 합니다. 현재 local vault는 평문 
 6. Agent가 생성한 SQL은 명시적인 editor handoff와 사람의 실행 결정을 거칩니다.
 7. 관리형 profile의 target과 정책은 local UI에서 수정해 우회할 수 없어야 합니다.
 8. read-only와 production 제한은 UI뿐 아니라 session 설정과 실제 DB role로 강제합니다.
+9. MCP는 명시적으로 켠 동안만 동작하고 credential·host·provider 식별자를 반환하지 않습니다.
 
 ## 현재 보장과 차이
 
@@ -61,13 +64,16 @@ policy와 database role이 강제해야 합니다. 현재 local vault는 평문 
 handoff를 제공합니다. 자동 잠금 해제를 위한 encryption key도 같은 사용자 영역에 있으므로,
 동일 사용자 권한을 탈취한 process에 대한 Keychain 수준의 보호는 제공하지 않습니다.
 읽기 전용 profile은 보수적인 SQL 사전 검사와 database session 쓰기 차단을 함께 사용합니다.
+외부 local Codex용 MCP는 기본 비활성화, 사용자 전용 socket, 현재 선택·연결된 profile 한정,
+sanitized connection metadata와 응답 크기 제한을 구현했습니다. 화면 잠금·절전·사용자 전환과
+앱 종료 시 socket도 닫습니다.
 
 아직 다음 경계는 완성되지 않았습니다.
 
 - 기존 Kubernetes resource identity 검증과 최소 RBAC transport
 - crash orphan recovery와 session timeout
 - dialect-aware SQL parser, 공통 query timeout/cancel과 production approval
-- server-side authorization을 수행하는 MCP capability
+- MCP write capability, 일회성 사람 승인과 dialect-aware SQL 분석
 - signing/notarization된 배포물과 update 신뢰 경계
 
 README와 UI는 위 항목을 현재 구현된 보장으로 표시해서는 안 됩니다.

@@ -1,6 +1,18 @@
 import AppKit
 import SwiftUI
 
+private struct AboutSettingsMenuItem: View {
+  @ObservedObject var settings: AppSettings
+  @Environment(\.openSettings) private var openSettings
+
+  var body: some View {
+    Button(settings.text("About Solnari")) {
+      settings.selectedSettingsTab = .about
+      openSettings()
+    }
+  }
+}
+
 @MainActor
 private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
   private let environment = AppEnvironment.shared
@@ -81,6 +93,7 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard isPrimaryInstance else { return }
     NSApp.setActivationPolicy(.regular)
+    environment.mcpAccess.activateIfNeeded()
     if let iconURL = Bundle.main.url(forResource: "Solnari", withExtension: "icns"),
       let icon = NSImage(contentsOf: iconURL)
     {
@@ -101,6 +114,7 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
     guard isPrimaryInstance else { return .terminateNow }
     guard !isTerminating else { return .terminateLater }
     isTerminating = true
+    environment.mcpAccess.stopForTermination()
     Task {
       await environment.workspace.suspendConnections()
       singleInstance.release()
@@ -119,11 +133,13 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func suspendConnections(_ notification: Notification) {
+    environment.mcpAccess.suspend()
     Task { await environment.workspace.suspendConnections() }
   }
 
   @objc private func resumeConnectionOperations(_ notification: Notification) {
     environment.workspace.resumeConnectionOperations()
+    environment.mcpAccess.resumeIfNeeded()
   }
 
   private func showMainWindow() {
@@ -147,6 +163,7 @@ struct SolnariApp: App {
   @NSApplicationDelegateAdaptor(SolnariAppDelegate.self) private var appDelegate
   @StateObject private var workspace = AppEnvironment.shared.workspace
   @StateObject private var settings = AppEnvironment.shared.settings
+  @StateObject private var mcpAccess = AppEnvironment.shared.mcpAccess
 
   var body: some Scene {
     WindowGroup {
@@ -159,6 +176,10 @@ struct SolnariApp: App {
     .defaultSize(width: 1_520, height: 940)
     .windowStyle(.hiddenTitleBar)
     .commands {
+      CommandGroup(replacing: .appInfo) {
+        AboutSettingsMenuItem(settings: settings)
+      }
+
       CommandGroup(replacing: .newItem) {
         Button(settings.text("New Connection")) {
           workspace.beginNewConnection()
@@ -183,6 +204,7 @@ struct SolnariApp: App {
     Settings {
       SettingsView()
         .environmentObject(settings)
+        .environmentObject(mcpAccess)
         .environment(\.locale, settings.locale)
     }
   }

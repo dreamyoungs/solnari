@@ -4,6 +4,10 @@ Solnari's Codex integration is designed for temporary, in-memory conversations. 
 metadata and query results can contain sensitive business information, so conversation
 persistence must be an explicit future opt-in rather than a default.
 
+This document governs the future in-app Codex conversation. The separately implemented local MCP
+server for external agents is opt-in, has no conversation store, and exposes only bounded tools for
+the connection currently selected in Solnari. See [MCP access](mcp-access.ko.md).
+
 ## App Server contract
 
 When starting a Codex App Server thread, Solnari must send `ephemeral: true`:

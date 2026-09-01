@@ -8,11 +8,13 @@ final class AppEnvironment {
 
   let workspace: WorkspaceModel
   let settings: AppSettings
+  let mcpAccess: MCPAccessController
 
   private init() {
     LegacyPreferencesMigrator.migrateIfNeeded()
     workspace = WorkspaceModel()
     settings = AppSettings()
+    mcpAccess = MCPAccessController(workspace: workspace)
   }
 }
 

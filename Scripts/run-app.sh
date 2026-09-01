@@ -3,7 +3,7 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${0:A}")/.." && pwd)"
 configuration="${1:-debug}"
-application_path="$($repository_root/Scripts/build-app.sh "$configuration" | tail -n 1)"
+application_path="$("$repository_root/Scripts/build-app.sh" "$configuration" | tail -n 1)"
 current_user="$(/usr/bin/id -un)"
 user_home="$(/usr/bin/dscl . -read "/Users/$current_user" NFSHomeDirectory | /usr/bin/awk '{print $2}')"
 if [[ -z "$user_home" || "$user_home" != /Users/* ]]; then

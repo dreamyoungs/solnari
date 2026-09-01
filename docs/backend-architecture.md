@@ -20,12 +20,20 @@ their wire protocols and schema queries remain isolated.
 - `QuerySafetyPolicy` rejects non-read statements before they reach a read-only session; each
   engine also configures its database connection to reject writes.
 - `QueryTableData` crosses the backend/UI boundary with typed cells and arbitrary columns.
+- `MCPAccessController` owns an opt-in, user-only local socket. The bundled Node STDIO MCP server
+  forwards bounded tool calls to the running app without reading profile or credential storage.
 
 Passwords never appear in `ConnectionProfile`, serialized preferences, diagnostics, or query
 results. Passwords are never passed as helper-process arguments or environment variables.
 The Node child receives a sanitized environment, uses an Application Support working directory,
 and preloads a guard that disables every `node:child_process` execution API. Therefore Google
 library fallbacks cannot launch `gcloud` or any other CLI.
+The MCP entrypoint uses the official TypeScript MCP SDK, publishes read-only tool annotations, and
+can access only the profile visibly selected in the running app. Query calls additionally require
+that profile to be connected with the read-only access level.
+The source and CI pin the bundled runtime through `.node-version`; release builds reject a different
+Node version. App packaging includes the Solnari license and the license texts found in the bundled
+Node runtime, production npm dependency tree, and resolved Swift package checkouts.
 
 ## Connection lifecycle
 
@@ -48,6 +56,8 @@ launch asks the existing app to bring its main window forward. Quit waits for th
 database clients, SSH forwarding processes, and Kubernetes relay cleanup to finish. Screen lock,
 sleep, screen sleep, and user-session deactivation perform the same cleanup and leave profiles
 disconnected after the Mac becomes active again.
+The same lifecycle closes the MCP socket. A Codex-started STDIO MCP process cannot reconnect until
+Solnari is active and the user has enabled local MCP access again.
 
 ## Typed results
 
@@ -117,3 +127,7 @@ zone-less timestamp types, and closes every session. Configure
 ```bash
 npm --prefix backend test -- cloud-sql.integration.test.ts
 ```
+
+MCP tests use the official in-memory client transport to verify tool schemas and annotations, a
+temporary user-only Unix socket for the Swift/Node bridge, and an isolated read-only SQLite database
+to verify schema access, typed result limits, and write rejection.
