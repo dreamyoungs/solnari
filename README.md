@@ -20,8 +20,10 @@
 </p>
 
 > [!NOTE]
-> 현재 버전은 **0.1.0 source preview**입니다. 소스에서 빌드한 개발용 앱은 사용할 수 있지만,
-> Developer ID로 서명·notarization된 공식 바이너리는 아직 배포하지 않습니다.
+> 현재 버전은 **0.2.0 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
+> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.2.0). Apple
+> Developer Program 가입 전까지는 Developer ID 서명·notarization되지 않으므로 최초 실행 시
+> 아래의 macOS 보안 승인 절차가 필요합니다.
 
 솔나리는 DataGrip 1년 약정이 끝난 뒤, 개인적으로 계속 사용할 데이터베이스 도구가
 필요해서 시작한 프로젝트입니다. 직접 만들기 시작하고 나서야 기존 제품의 완성도가 왜
@@ -138,19 +140,41 @@ Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리�
 - 운영 DML/DDL 승인과 일회성 write capability
 - 실제 앱 내부 Codex App Server 연동
 - MCP write capability와 사람의 일회성 승인 workflow
-- Developer ID 서명, notarization과 GitHub Release 자동 배포
+- GitHub Release 자동 배포와 Intel Mac build
 - 테이블 데이터 수정과 더 넓은 DB 객체 탐색
 
 진행 중인 항목을 현재 보장처럼 표시하지 않는 것을 프로젝트 문서 원칙으로 삼습니다.
 
 ## 설치
 
-GitHub Release에서 내려받을 수 있는 서명·notarization된 앱은 아직 준비 중입니다. 현재는
-소스에서 개발용 앱을 빌드할 수 있습니다.
+### Apple Silicon용 DMG로 설치하기
+
+[Solnari 0.2.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.2.0)에서
+`Solnari-0.2.0-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
+Program에 가입하지 않고 만든 무료 오픈소스 preview라서 ad-hoc 서명되어 있고 Apple의
+notarization을 받지 않았습니다. Apple Silicon Mac에서 다음 순서로 최초 실행을 승인합니다.
+
+1. DMG를 열고 `Solnari.app`을 **응용 프로그램** 폴더로 복사합니다.
+2. 응용 프로그램 폴더의 Solnari를 한 번 실행하고 macOS 경고창에서 **완료**를 누릅니다.
+3. **시스템 설정 → 개인정보 보호 및 보안**을 열고 화면 맨 아래 **보안** 영역까지
+   스크롤합니다.
+4. “Mac을 보호하기 위해 ‘Solnari’을(를) 차단했습니다” 옆의 **그래도 열기**를 누릅니다.
+5. 암호 또는 Touch ID로 승인한 뒤 다시 나타나는 창에서 **그래도 열기**를 선택합니다.
+
+이 승인은 해당 앱에 한 번만 필요합니다. **그래도 열기** 항목은 실행을 시도한 뒤 약 한 시간
+동안 표시됩니다. 자세한 배경과 Apple의 공식 절차는
+[Apple의 보안 설정을 재정의하여 앱 열기](https://support.apple.com/guide/mac-help/mh40617/mac)를
+참고해 주세요.
+
+보안 예외를 승인하고 싶지 않거나 배포 파일 대신 전체 build 과정을 직접 확인하고 싶다면
+아래의 **소스에서 직접 빌드하기**를 이용할 수 있습니다. 프로젝트 사용과 GitHub Stars가
+충분히 늘어나면 Apple Developer Program에 등록하고 Developer ID로 서명·notarization한
+DMG를 제공할 계획입니다.
 
 ### 요구사항
 
 - macOS 14 이상
+- Apple Silicon Mac(공개 DMG 기준, Intel Mac은 아직 지원하지 않음)
 - Swift 6.1 이상 또는 호환되는 Xcode toolchain
 - `.node-version`에 명시한 Node.js 24 LTS와 npm(소스 build에만 필요하며 완성된 app에는
   runtime을 포함합니다)
@@ -169,7 +193,7 @@ Cloud SQL Connector로 처리합니다. Solnari는 `gcloud` 또는 외부 `cloud
 | SSH tunnel | macOS OpenSSH 설정 또는 SSH agent |
 | Kubernetes | `kubectl`, kubeconfig와 대상 리소스의 port-forward 권한 |
 
-### 빌드하고 실행하기
+### 소스에서 직접 빌드하기
 
 ```bash
 git clone https://github.com/dreamyoungs/solnari.git
@@ -194,11 +218,48 @@ npm --prefix backend ci --include=dev
 checksum을 검증한 뒤 `.build` cache에 보관합니다. 로컬 Node 설치 directory의 license file에는
 의존하지 않습니다.
 
+### 버전 올리기
+
+`VERSION`은 사용자에게 표시되는 `x.y.z`, `BUILD_NUMBER`는 개별 app build 번호입니다.
+버그·작은 수정은 `patch`, 기능 추가는 `minor`, 안정판의 호환성 변경은 `major`를 사용합니다.
+
+```bash
+./Scripts/bump-version.sh patch
+./Scripts/bump-version.sh minor
+./Scripts/bump-version.sh build # 앱 버전은 유지하고 build 번호만 증가
+```
+
+### 로컬 Apple Silicon DMG 만들기
+
+Apple Developer Program 가입 없이 테스트용 DMG를 만들 수 있습니다.
+
+```bash
+./Scripts/package-local-dmg.sh
+```
+
+결과는 `.build/release/Solnari-0.2.0-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
+GitHub Release의 preview와 동일하게 ad-hoc 서명 앱을 포함하며 notarization되지 않았습니다.
+
+### 공식 Apple Silicon DMG 만들기
+
+Apple Developer Program 가입 후 Developer ID Application 인증서와 `notarytool` Keychain
+profile을 준비해 실행합니다.
+
+```bash
+export SOLNARI_CODESIGN_IDENTITY="Developer ID Application: Example (TEAMID)"
+export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
+./Scripts/package-release.sh
+```
+
+결과는 `.build/release/Solnari-0.2.0-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
+Developer ID로 서명하고 DMG를 notarization한 뒤 ticket을 staple합니다. 가입 전에는 이
+script의 인증서·notary 사전 검사를 통과할 수 없습니다.
+
 `run-app.sh`는 macOS의 Documents 폴더 접근 요청을 피하도록 빌드된 앱을
 `~/Applications/Solnari Development.app`에 복사해서 실행합니다. 이 앱은
 [솔나리 꽃 아이콘](Sources/Solnari/Resources/SolnariIcon.png)과 인증서 없는 로컬 개발용
-서명을 사용합니다. 공개 Release에는 Developer ID 서명과 Apple notarization을 별도로 적용할
-예정입니다.
+서명을 사용합니다. `package-release.sh`로 만드는 공개 DMG에는 Developer ID 서명과 Apple
+notarization을 적용합니다.
 
 빠른 개발 반복에는 `swift run Solnari`도 사용할 수 있습니다. 최초 번들 실행 시 이전
 `swift run`에서 만든 비민감 연결 목록·언어·표시 시간대 설정을 한 번 이관합니다.

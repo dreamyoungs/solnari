@@ -13,6 +13,19 @@ esac
 
 cd "$repository_root"
 
+app_version="$(<"$repository_root/VERSION")"
+build_number="$(<"$repository_root/BUILD_NUMBER")"
+plist_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+  "$repository_root/App/Info.plist")"
+plist_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
+  "$repository_root/App/Info.plist")"
+if [[ "$app_version" != <->.<->.<-> || "$build_number" != <-> \
+      || "$plist_version" != "$app_version" || "$plist_build" != "$build_number" ]]; then
+  print -u2 "VERSION, BUILD_NUMBER, and App/Info.plist must contain the same valid version."
+  print -u2 "Use Scripts/bump-version.sh to update them together."
+  exit 65
+fi
+
 developer_directory="$(/usr/bin/xcode-select --print-path 2>/dev/null || true)"
 swift_executable="$(/usr/bin/xcrun --find swift 2>/dev/null || true)"
 if [[ -z "$developer_directory" || ! -d "$developer_directory" || \
@@ -69,6 +82,10 @@ mkdir -p \
   "$staged_application/Contents/Resources/Licenses"
 /usr/bin/ditto "$binary_directory/Solnari" "$staged_application/Contents/MacOS/Solnari"
 /usr/bin/ditto "$repository_root/App/Info.plist" "$staged_application/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $app_version" \
+  "$staged_application/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" \
+  "$staged_application/Contents/Info.plist"
 /usr/bin/ditto "$node_executable" "$staged_application/Contents/Resources/Node/bin/node"
 /bin/chmod 755 "$staged_application/Contents/Resources/Node/bin/node"
 /usr/bin/ditto \

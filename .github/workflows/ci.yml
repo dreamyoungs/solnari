@@ -61,5 +61,13 @@ jobs:
       - name: Verify the app signature
         run: codesign --verify --deep --strict --verbose=2 .build/app/release/Solnari.app
 
+      - name: Build and verify the local disk image
+        run: |
+          ./Scripts/create-dmg.sh \
+            .build/app/release/Solnari.app \
+            .build/release/Solnari-ci.dmg \
+            "Solnari CI"
+          hdiutil verify .build/release/Solnari-ci.dmg
+
       - name: Check patch whitespace
         run: git diff --check
