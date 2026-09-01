@@ -4,6 +4,33 @@ import Testing
 @testable import Solnari
 
 struct SQLiteBackendIntegrationTests {
+  @Test("비어 있는 SQLite 데이터베이스도 main 스키마를 표시한다")
+  func emptyDatabaseIncludesMainSchema() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SolnariEmptySchemaTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let profile = ConnectionProfile(
+      name: "Empty SQLite",
+      database: directory.appendingPathComponent("empty.db").path,
+      engine: .sqlite,
+      transport: .direct,
+      host: "",
+      port: 0,
+      username: "",
+      requiresTLS: false,
+      clientEncoding: "Automatic"
+    )
+    let backend = DatabaseBackend()
+
+    _ = try await backend.connect(profile: profile, password: "")
+    let schema = try await backend.loadSchema(profileID: profile.id)
+
+    #expect(schema.schemas == ["main"])
+    #expect(schema.objects.isEmpty)
+    await backend.disconnectAll()
+  }
+
   @Test("SQLite 파일 연결, 스키마 탐색, 쿼리 실행을 실제로 검증한다")
   func fileConnectionSchemaAndQuery() async throws {
     let directory = FileManager.default.temporaryDirectory
@@ -58,7 +85,8 @@ struct SQLiteBackendIntegrationTests {
     #expect(result.table.rows == [[.integer(1), .text("솔나리")]])
 
     let schema = try await backend.loadSchema(profileID: profile.id)
-    let people = try #require(schema.first { $0.name == "people" })
+    #expect(schema.schemas == ["main"])
+    let people = try #require(schema.objects.first { $0.name == "people" })
     #expect(people.columnCount == 3)
     let details = try await backend.loadSchemaObjectDetails(
       profileID: profile.id,

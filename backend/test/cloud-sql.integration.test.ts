@@ -37,15 +37,21 @@ describe.skipIf(!isConfigured)("Cloud SQL IAM integration", () => {
       });
       expect(metadata).toBeTruthy();
 
-      const schema = (await sessions.schema({ profileID })) as Array<{
-        schema: string;
-        name: string;
-        kind: "table" | "view" | "materializedView";
-        columnCount: number;
-      }>;
-      expect(schema.length).toBeGreaterThan(0);
+      const schema = (await sessions.schema({ profileID })) as {
+        schemas: string[];
+        objects: Array<{
+          schema: string;
+          name: string;
+          kind: "table" | "view" | "materializedView";
+          columnCount: number;
+        }>;
+      };
+      expect(schema.schemas.length).toBeGreaterThan(0);
+      expect(schema.objects.length).toBeGreaterThan(0);
 
-      const object = schema.find((item) => item.kind === "table") ?? schema[0];
+      const object =
+        schema.objects.find((item) => item.kind === "table") ??
+        schema.objects[0];
       expect(object).toBeDefined();
       if (object !== undefined) {
         const details = (await sessions.details({ profileID, object })) as {

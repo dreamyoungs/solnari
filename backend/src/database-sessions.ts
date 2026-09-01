@@ -132,6 +132,13 @@ export class DatabaseSessions {
   async schema(raw: unknown): Promise<unknown> {
     const session = this.requiredSession(raw);
     if (session.engine === "PostgreSQL") {
+      const schemaResult = await session.client.query<{ schema: string }>(
+        `SELECT namespace.nspname AS schema
+           FROM pg_catalog.pg_namespace AS namespace
+          WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+            AND namespace.nspname NOT LIKE 'pg_toast%'
+          ORDER BY namespace.nspname`,
+      );
       const result = await session.client.query<{
         schema: string;
         name: string;
@@ -157,14 +164,20 @@ export class DatabaseSessions {
            AND namespace.nspname NOT LIKE 'pg_toast%'
          GROUP BY namespace.nspname, relation.relname, relation.relkind
          ORDER BY namespace.nspname, relation.relname`);
-      return result.rows.map((row) => ({
-        schema: row.schema,
-        name: row.name,
-        kind: row.kind,
-        columnCount: Number(row.column_count),
-      }));
+      return {
+        schemas: schemaResult.rows.map((row) => row.schema),
+        objects: result.rows.map((row) => ({
+          schema: row.schema,
+          name: row.name,
+          kind: row.kind,
+          columnCount: Number(row.column_count),
+        })),
+      };
     }
 
+    const [schemaRows] = await session.client.query<mysql.RowDataPacket[]>(
+      "SELECT DATABASE() AS schema_name",
+    );
     const [rows] = await session.client.query<mysql.RowDataPacket[]>(
       `SELECT table_schema AS \`schema\`,
               table_name AS name,
@@ -177,12 +190,17 @@ export class DatabaseSessions {
         WHERE table_schema = DATABASE()
         ORDER BY table_name`,
     );
-    return rows.map((row) => ({
-      schema: String(row.schema),
-      name: String(row.name),
-      kind: String(row.kind),
-      columnCount: Number(row.column_count),
-    }));
+    return {
+      schemas: schemaRows
+        .map((row) => row.schema_name)
+        .filter((schema): schema is string => typeof schema === "string"),
+      objects: rows.map((row) => ({
+        schema: String(row.schema),
+        name: String(row.name),
+        kind: String(row.kind),
+        columnCount: Number(row.column_count),
+      })),
+    };
   }
 
   async details(raw: unknown): Promise<unknown> {

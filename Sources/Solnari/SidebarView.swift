@@ -163,9 +163,7 @@ struct SidebarView: View {
   }
 
   private var schemaNames: [String] {
-    Array(Set(model.schemaObjects.map(\.schema))).sorted {
-      $0.localizedStandardCompare($1) == .orderedAscending
-    }
+    model.schemaNames
   }
 
   private func schemaTree(_ schema: String) -> some View {

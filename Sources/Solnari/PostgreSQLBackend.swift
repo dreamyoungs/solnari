@@ -58,9 +58,24 @@ actor PostgreSQLBackend {
     sessions.removeValue(forKey: profileID)?.runTask.cancel()
   }
 
-  func loadSchema(profileID: UUID) async throws -> [SchemaObject] {
+  func loadSchema(profileID: UUID) async throws -> SchemaSnapshot {
     guard let client = sessions[profileID]?.client else {
       throw SolnariDatabaseError.notConnected
+    }
+
+    let schemaRows = try await client.query(
+      """
+      SELECT namespace.nspname AS schema_name
+      FROM pg_catalog.pg_namespace AS namespace
+      WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND namespace.nspname !~ '^pg_toast'
+      ORDER BY namespace.nspname;
+      """
+    )
+    var schemas: [String] = []
+    for try await row in schemaRows {
+      guard let cell = Array(row).first else { continue }
+      schemas.append(try cell.decode(String.self))
     }
 
     let rows = try await client.query(
@@ -105,7 +120,7 @@ actor PostgreSQLBackend {
           columnCount: Int(clamping: columnCount)
         ))
     }
-    return objects
+    return SchemaSnapshot(schemas: schemas, objects: objects)
   }
 
   func loadSchemaObjectDetails(profileID: UUID, object: SchemaObject) async throws

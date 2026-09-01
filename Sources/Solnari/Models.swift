@@ -325,6 +325,20 @@ struct SchemaObject: Identifiable, Hashable, Codable, Sendable {
   }
 }
 
+struct SchemaSnapshot: Hashable, Codable, Sendable {
+  let schemas: [String]
+  let objects: [SchemaObject]
+
+  static let empty = SchemaSnapshot(schemas: [], objects: [])
+
+  init(schemas: [String], objects: [SchemaObject]) {
+    self.schemas = Array(Set(schemas).union(objects.map(\.schema))).sorted {
+      $0.localizedStandardCompare($1) == .orderedAscending
+    }
+    self.objects = objects
+  }
+}
+
 struct SchemaColumn: Identifiable, Hashable, Codable, Sendable {
   var id: String { "\(ordinalPosition)-\(name)" }
   let ordinalPosition: Int
@@ -405,6 +419,35 @@ struct EditorTab: Identifiable, Hashable, Sendable {
     self.title = title
     self.sql = sql
     self.isModified = isModified
+  }
+}
+
+struct ConnectionWorkspace: Hashable, Sendable {
+  var schema: SchemaSnapshot
+  var editorTabs: [EditorTab]
+  var selectedTabID: UUID?
+  var queryTable: QueryTableData
+  var executionMessage: String
+  var selectedResultTab: String
+  var isRunning: Bool
+
+  init() {
+    let query = EditorTab(
+      title: "Query 1",
+      sql: """
+        SELECT
+          current_database() AS database,
+          current_user AS user,
+          now() AS server_time;
+        """
+    )
+    schema = .empty
+    editorTabs = [query]
+    selectedTabID = query.id
+    queryTable = .empty
+    executionMessage = "No results"
+    selectedResultTab = "Results"
+    isRunning = false
   }
 }
 

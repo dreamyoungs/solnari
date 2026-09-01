@@ -62,10 +62,12 @@ actor MySQLBackend {
     try? await connection.close().get()
   }
 
-  func loadSchema(profileID: UUID) async throws -> [SchemaObject] {
+  func loadSchema(profileID: UUID) async throws -> SchemaSnapshot {
     guard let connection = sessions[profileID] else {
       throw SolnariDatabaseError.notConnected
     }
+    let schemaRows = try await connection.simpleQuery("SELECT DATABASE() AS schema_name").get()
+    let schemas = schemaRows.compactMap { $0.column("schema_name")?.string }
     let rows = try await connection.simpleQuery(
       """
       SELECT
@@ -81,7 +83,7 @@ actor MySQLBackend {
       """
     ).get()
 
-    return rows.compactMap { row in
+    let objects: [SchemaObject] = rows.compactMap { row in
       guard let schema = row.column("table_schema")?.string,
         let name = row.column("table_name")?.string,
         let type = row.column("table_type")?.string,
@@ -94,6 +96,7 @@ actor MySQLBackend {
         columnCount: count
       )
     }
+    return SchemaSnapshot(schemas: schemas, objects: objects)
   }
 
   func loadSchemaObjectDetails(profileID: UUID, object: SchemaObject) async throws

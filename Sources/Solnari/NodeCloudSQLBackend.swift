@@ -89,7 +89,7 @@ actor NodeCloudSQLBackend {
     await client.stop()
   }
 
-  func loadSchema(profileID: UUID) async throws -> [SchemaObject] {
+  func loadSchema(profileID: UUID) async throws -> SchemaSnapshot {
     try await client.call(
       method: "database.schema",
       params: ProfileParameters(profileID: profileID)

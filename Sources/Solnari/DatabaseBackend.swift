@@ -117,7 +117,7 @@ actor DatabaseBackend {
     await transports.closeAll()
   }
 
-  func loadSchema(profileID: UUID) async throws -> [SchemaObject] {
+  func loadSchema(profileID: UUID) async throws -> SchemaSnapshot {
     if connectedProfiles[profileID]?.transport == .cloudSQL {
       return try await nodeCloudSQL.loadSchema(profileID: profileID)
     }

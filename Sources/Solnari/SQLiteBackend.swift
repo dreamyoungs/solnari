@@ -57,7 +57,7 @@ actor SQLiteBackend {
     try? await connection.close()
   }
 
-  func loadSchema(profileID: UUID) async throws -> [SchemaObject] {
+  func loadSchema(profileID: UUID) async throws -> SchemaSnapshot {
     guard let connection = sessions[profileID] else {
       throw SolnariDatabaseError.notConnected
     }
@@ -76,7 +76,7 @@ actor SQLiteBackend {
       ORDER BY object.name
       """
     )
-    return rows.compactMap { row in
+    let objects: [SchemaObject] = rows.compactMap { row in
       guard let name = row.column("object_name")?.string,
         let type = row.column("object_type")?.string,
         let count = row.column("column_count")?.integer
@@ -88,6 +88,7 @@ actor SQLiteBackend {
         columnCount: count
       )
     }
+    return SchemaSnapshot(schemas: ["main"], objects: objects)
   }
 
   func loadSchemaObjectDetails(profileID: UUID, object: SchemaObject) async throws
