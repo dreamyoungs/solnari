@@ -179,12 +179,16 @@ npm --prefix backend ci --include=dev
 ./Scripts/run-app.sh
 ```
 
-Release 설정의 로컬 앱을 만들려면 다음을 실행합니다.
+Release 설정으로 로컬 앱을 빌드하고 `~/Applications/Solnari Development.app`에 복사한 뒤
+실행하려면 다음을 사용합니다.
 
 ```bash
 npm --prefix backend ci --include=dev
-./Scripts/build-app.sh release
+./Scripts/run-app.sh release
 ```
+
+실행·복사 없이 app bundle만 만들려면 `./Scripts/build-app.sh release`를 사용합니다. 결과는
+`.build/app/release/Solnari.app`에 생성됩니다.
 
 최초 app bundle build에서는 `.node-version`과 일치하는 공식 Node.js license를 내려받아
 checksum을 검증한 뒤 `.build` cache에 보관합니다. 로컬 Node 설치 directory의 license file에는

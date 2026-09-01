@@ -158,12 +158,16 @@ npm --prefix backend ci --include=dev
 ./Scripts/run-app.sh
 ```
 
-Build a local Release configuration app:
+Build a local Release configuration app, copy it to
+`~/Applications/Solnari Development.app`, and launch it:
 
 ```bash
 npm --prefix backend ci --include=dev
-./Scripts/build-app.sh release
+./Scripts/run-app.sh release
 ```
+
+To create only the app bundle without copying or launching it, run
+`./Scripts/build-app.sh release`. The result is written to `.build/app/release/Solnari.app`.
 
 On the first app bundle build, the script downloads the official Node.js license matching
 `.node-version`, verifies its checksum, and caches it under `.build`. It does not depend on a license
