@@ -27,7 +27,7 @@
     "@types/pg": "^8.15.6",
     "esbuild": "^0.28.2",
     "prettier": "3.9.6",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.0.13"
   },
   "allowScripts": {
