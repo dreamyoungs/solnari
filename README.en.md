@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/solnari-overview-v2.png" alt="Solnari start workspace and new database connection screen" width="1200">
+  <img src="docs/images/solnari-overview.png" alt="Solnari start workspace and new database connection screen" width="1200">
 </p>
 
 > [!NOTE]
