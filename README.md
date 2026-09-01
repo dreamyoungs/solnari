@@ -1,8 +1,23 @@
 <p align="right"><a href="README.en.md">English</a></p>
 
-# Solnari · 솔나리
+<p align="center">
+  <img src="Sources/Solnari/Resources/SolnariIcon.png" alt="솔나리 로고" width="160">
+</p>
 
-**내가 매일 사용할 수 있도록 만들고 있는 macOS 네이티브 오픈소스 데이터베이스 도구입니다.**
+<h1 align="center">Solnari · 솔나리</h1>
+
+<p align="center"><strong>내가 매일 사용할 수 있도록 만들고 있는 macOS 네이티브 오픈소스 데이터베이스 도구입니다.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/dreamyoungs/solnari/actions/workflows/ci.yml"><img src="https://github.com/dreamyoungs/solnari/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://support.apple.com/macos"><img src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple" alt="macOS 14+"></a>
+  <a href="Package.swift"><img src="https://img.shields.io/badge/Swift-6.1-F05138?logo=swift&amp;logoColor=white" alt="Swift 6.1"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache 2.0"></a>
+</p>
+
+> [!NOTE]
+> 현재 버전은 **0.1.0 source preview**입니다. 소스에서 빌드한 개발용 앱은 사용할 수 있지만,
+> Developer ID로 서명·notarization된 공식 바이너리는 아직 배포하지 않습니다.
 
 솔나리는 DataGrip 1년 약정이 끝난 뒤, 개인적으로 계속 사용할 데이터베이스 도구가
 필요해서 시작한 프로젝트입니다. 직접 만들기 시작하고 나서야 기존 제품의 완성도가 왜
@@ -44,13 +59,14 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - 저장된 연결의 편집·재연결과 확인 절차가 있는 삭제
 - 로컬 연결 정의와 AES-GCM으로 암호화한 사용자 전용 credential vault
 - 다중 탭 SQL editor와 크기 조절 가능한 editor/result layout
-- 컬럼 크기 조절과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
+- 드래그·경계선 더블클릭 컬럼 맞춤과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
 - CSV, TSV, JSON, JSON Lines, Markdown, SQL `INSERT` 복사·내보내기
 - PostgreSQL/MySQL/SQLite의 문자셋·정렬 규칙 설정 UI
 - 절대 시간과 시간대 없는 값을 구분하는 결과 시간대 표시
 - 한국어·영어 런타임 전환과 macOS light/dark appearance
 - 앱 중복 실행 방지와 종료·잠금·절전·사용자 전환 시 연결 세션 정리
 - 읽기 전용 profile의 보수적인 SQL 사전 검사와 DB session 쓰기 차단
+- 현재 선택한 연결의 metadata·schema와 읽기 전용 query tool을 외부 Codex에 제공하는 opt-in local MCP server
 - Agent 제안 SQL을 editor로 명시적으로 넘기는 Codex UI prototype
 
 ### 연결 지원표
@@ -88,8 +104,27 @@ Pod 생성·삭제 권한이 추가로 필요합니다.
 
 자세한 현재 구조와 보안 목표는 [Backend architecture](docs/backend-architecture.md),
 [Connection paths](docs/connection-paths.md),
+[외부 Agent용 MCP 접근](docs/mcp-access.ko.md),
 [보안 우선 연결 아키텍처](docs/security-first-connection-architecture.ko.md),
 [위협 모델](docs/threat-model.ko.md)을 참고해 주세요.
+
+### 아키텍처 한눈에 보기
+
+```text
+SwiftUI workspace
+  ├─ Direct / SSH / Kubernetes / SQLite → native Swift adapters
+  └─ Cloud SQL → private stdio JSON-RPC → bundled Node 24 Core
+                                      ├─ Google Auth Library
+                                      ├─ Cloud SQL Connector
+                                      └─ pg / mysql2
+
+Local Codex → bundled Node MCP STDIO server → user-only local socket → SwiftUI workspace
+```
+
+Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리에서 실행되며 모든
+`node:child_process` API를 차단합니다. 외부 Codex용 MCP는 기본적으로 꺼져 있고 현재 선택한
+연결만 보며, credential·host·Cloud project 식별자를 반환하지 않습니다. Cloud SQL 경로가
+`gcloud`나 외부 Proxy로 자동 우회하지 않도록 이 경계를 테스트합니다.
 
 ## 아직 구현 중입니다
 
@@ -97,7 +132,8 @@ Pod 생성·삭제 권한이 추가로 필요합니다.
 - 연결 idle/max lifetime, 강제 종료 뒤 orphan process 복구
 - dialect-aware SQL parser, 공통 timeout, query cancel과 결과/export 상한
 - 운영 DML/DDL 승인과 일회성 write capability
-- 실제 Codex App Server 및 정책에 제한된 MCP capability
+- 실제 앱 내부 Codex App Server 연동
+- MCP write capability와 사람의 일회성 승인 workflow
 - Developer ID 서명, notarization과 GitHub Release 자동 배포
 - 테이블 데이터 수정과 더 넓은 DB 객체 탐색
 
@@ -112,17 +148,26 @@ GitHub Release에서 내려받을 수 있는 서명·notarization된 앱은 아�
 
 - macOS 14 이상
 - Swift 6.1 이상 또는 호환되는 Xcode toolchain
-- Node.js 24 이상과 npm(소스 build에만 필요하며 완성된 app에는 runtime을 포함합니다)
+- `.node-version`에 명시한 Node.js 24 LTS와 npm(소스 build에만 필요하며 완성된 app에는
+  runtime을 포함합니다)
 
 Cloud SQL 연결과 리소스 조회는 app에 포함된 Node backend가 Google 공식 Auth Library와
 Cloud SQL Connector로 처리합니다. Solnari는 `gcloud` 또는 외부 `cloud-sql-proxy`를 실행하지
 않습니다. 현재 SSH와 Kubernetes 경로에는 각각 OpenSSH와 `kubectl`이 필요합니다.
+
+| 기능 | 추가로 필요한 로컬 구성 |
+| --- | --- |
+| Direct / SQLite | 없음 |
+| Cloud SQL IAM | Application Default Credentials와 필요한 Cloud SQL IAM 권한 |
+| SSH tunnel | macOS OpenSSH 설정 또는 SSH agent |
+| Kubernetes | `kubectl`, kubeconfig와 대상 리소스의 port-forward 권한 |
 
 ### 빌드하고 실행하기
 
 ```bash
 git clone https://github.com/dreamyoungs/solnari.git
 cd solnari
+nvm use # nvm을 사용한다면
 ./Scripts/run-app.sh
 ```
 
@@ -140,6 +185,14 @@ Release 설정의 로컬 앱을 만들려면 다음을 실행합니다.
 
 빠른 개발 반복에는 `swift run Solnari`도 사용할 수 있습니다. 최초 번들 실행 시 이전
 `swift run`에서 만든 비민감 연결 목록·언어·표시 시간대 설정을 한 번 이관합니다.
+
+### 외부 Codex에서 연결하기
+
+앱의 `설정 → MCP 접근`에서 local MCP를 켜고 표시되는 Codex 등록 명령을 한 번 실행합니다.
+그 뒤 Codex를 재시작하면 현재 Solnari에서 선택한 연결의 정제된 metadata·schema와 읽기 전용
+query 도구를 사용할 수 있습니다. MCP는 새 설치에서 꺼져 있고, query는 이미 연결된
+`Read-only` profile에만 허용됩니다. 자세한 범위와 제한은
+[외부 Agent용 MCP 접근](docs/mcp-access.ko.md)을 확인해 주세요.
 
 ## 검증
 
@@ -166,16 +219,23 @@ SQLite와 격리된 fake CLI transport test는 기본 `swift test`에서 실행�
   권한을 탈취한 악성 process에 대해 macOS Keychain과 같은 보호를 제공하지 않습니다.
 - 자동 IAM 인증에서는 DB 비밀번호를 요청하거나 helper argument로 전달하지 않습니다.
 - helper command는 shell 문자열이 아닌 executable과 argument 배열로 실행합니다.
-- Codex 대화, SQL, schema와 result는 현재 Solnari가 영속화하거나 telemetry로 보내지 않습니다.
+- Solnari는 Codex 대화, SQL, schema와 result를 영속화하거나 telemetry로 보내지 않습니다.
+  MCP를 켜고 도구를 호출하면 요청한 schema·query·result는 선택한 외부 Agent context로 전달될
+  수 있습니다.
 - private 연결 실패 시 다른 transport로 자동 fallback하지 않습니다.
 
 현재 한계와 취약점 제보 방법은 [SECURITY.md](SECURITY.md)를 확인해 주세요. 실제 endpoint,
 credential, 운영 SQL 또는 고객 데이터를 공개 issue에 첨부하지 마세요.
 
+공식 바이너리를 만드는 유지관리 절차와 공개 전 확인 항목은
+[공개·릴리스 체크리스트](docs/public-release-checklist.ko.md)를 따릅니다.
+
 ## 기여하기
 
 작은 버그 수정, DB별 동작 검증, UX 제안과 보안 리뷰를 모두 환영합니다.
 [CONTRIBUTING.md](CONTRIBUTING.md)의 개발 및 검증 절차를 먼저 확인해 주세요.
+[행동 강령](CODE_OF_CONDUCT.md)은 issue, pull request와 프로젝트 커뮤니티 공간에 모두
+적용됩니다.
 
 ## 라이선스
 

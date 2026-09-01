@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a focused improvement to Solnari.
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is difficult today, and who encounters it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the user-visible behavior rather than only an implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Query editor and results
+        - Schema and table exploration
+        - Connection management
+        - Cloud SQL
+        - SSH or Kubernetes
+        - Export and time zones
+        - Security and policy
+        - Codex integration
+        - Documentation and release
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: The request contains no credentials, private infrastructure identifiers, SQL, schema, or result data.
+          required: true

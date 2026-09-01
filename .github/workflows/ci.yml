@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Swift, Node, and app bundle
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: Install Node dependencies
+        run: npm --prefix backend ci
+
+      - name: Show toolchain versions
+        run: |
+          swift --version
+          node --version
+          npm --version
+
+      - name: Check Swift formatting
+        run: swift format lint --recursive --strict Sources Tests
+
+      - name: Run Swift tests
+        run: swift test
+
+      - name: Check Node formatting and types
+        run: |
+          npm --prefix backend run format:check
+          npm --prefix backend run typecheck
+
+      - name: Run Node tests and dependency audit
+        run: |
+          npm --prefix backend test
+          npm --prefix backend audit --audit-level=low
+
+      - name: Build the development release bundle
+        run: ./Scripts/build-app.sh release
+
+      - name: Verify the app signature
+        run: codesign --verify --deep --strict --verbose=2 .build/app/release/Solnari.app
+
+      - name: Check patch whitespace
+        run: git diff --check
