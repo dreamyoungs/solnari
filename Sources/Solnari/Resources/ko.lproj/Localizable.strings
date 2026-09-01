@@ -194,7 +194,7 @@
 "Uses current ADC account" = "현재 ADC 계정 사용";
 "Checking ADC account…" = "ADC 계정 확인 중…";
 "IAM database user filled automatically" = "IAM 데이터베이스 사용자 자동 입력";
-"Enter the IAM database user manually" = "IAM 데이터베이스 사용자를 직접 입력하세요";
+"Confirm the IAM database user below" = "아래 IAM 데이터베이스 사용자를 확인해 주세요";
 "Automatic IAM authentication does not use a database password." = "자동 IAM 인증에서는 데이터베이스 비밀번호를 사용하지 않습니다.";
 "Testing connection…" = "연결 테스트 중…";
 "Connected in" = "연결됨 ·";

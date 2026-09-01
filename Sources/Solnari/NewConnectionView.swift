@@ -171,7 +171,7 @@ struct NewConnectionView: View {
       HStack(alignment: .top, spacing: 16) {
         VStack(alignment: .leading, spacing: 7) {
           fieldLabel("Connection name")
-          TextField(settings.text("Production database"), text: $draft.name)
+          TextField(settings.text("Production database"), text: singleLine($draft.name))
             .textFieldStyle(.roundedBorder)
             .focused($focusedField, equals: .connectionName)
         }
@@ -227,7 +227,7 @@ struct NewConnectionView: View {
         VStack(alignment: .leading, spacing: 7) {
           fieldLabel("SQLite database file")
           HStack(spacing: 8) {
-            TextField("/Users/me/data.sqlite", text: $draft.database)
+            TextField("/Users/me/data.sqlite", text: singleLine($draft.database))
               .textFieldStyle(.roundedBorder)
             Button(settings.text("Open…")) { chooseExistingSQLiteFile() }
             Button(settings.text("New…")) { chooseNewSQLiteFile() }
@@ -406,9 +406,9 @@ struct NewConnectionView: View {
           .foregroundStyle(.secondary)
       }
     case .unavailable:
-      Text(settings.text("Enter the IAM database user manually"))
+      Text(settings.text("Confirm the IAM database user below"))
         .font(.caption)
-        .foregroundStyle(SolnariTheme.orange)
+        .foregroundStyle(.secondary)
     }
   }
 
@@ -994,11 +994,18 @@ struct NewConnectionView: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 7) {
       fieldLabel(title)
-      TextField(placeholder, text: text)
+      TextField(placeholder, text: singleLine(text))
         .textFieldStyle(.roundedBorder)
     }
     .frame(width: width)
     .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
+  }
+
+  private func singleLine(_ text: Binding<String>) -> Binding<String> {
+    Binding(
+      get: { text.wrappedValue },
+      set: { text.wrappedValue = SingleLineText.normalized($0) }
+    )
   }
 
   private var databaseCredentialFields: some View {
