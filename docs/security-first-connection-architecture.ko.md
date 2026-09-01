@@ -1,6 +1,6 @@
 # Solnari 보안 우선 연결 아키텍처 제안
 
-> 상태: 메인 구현 스레드 전달용 설계 초안
+> 상태: 구현과 함께 갱신하는 보안 아키텍처 기준 문서
 > 목적: 일반적인 DB 도구의 연결 편의성을 유지하면서, 조직 환경에서는 강력한 보안 정책을 제품의 핵심 차별점으로 제공한다.
 
 ## 1. 제품 방향
@@ -30,7 +30,7 @@ Solnari는 로컬 개발자부터 엄격한 조직 보안 환경까지 사용할
 - `sqliteFile`: 로컬 SQLite 파일
 - `direct`: PostgreSQL/MySQL 호스트와 포트에 직접 연결
 - `sshTunnel`: 기존 SSH bastion을 통한 포트 포워딩
-- `cloudSQLProxy`: 사용자의 ADC를 사용하는 로컬 Cloud SQL Auth Proxy
+- `cloudSQLConnector`: Node Core가 ADC와 Google 공식 Cloud SQL Connector를 사용해 여는 보안 연결
 - `kubernetesPortForward`: 기존 Service/Pod에 port-forward
 - `managedGKEProxy`: 조직이 승인한 전용 `admin-db-proxy`에 검증 후 port-forward
 - `temporaryRelay`: 임시 relay Pod 생성. 개발·실험용 고급 기능이며 조직 정책으로 금지 가능
@@ -43,8 +43,8 @@ Solnari는 로컬 개발자부터 엄격한 조직 보안 환경까지 사용할
   - 비TLS가 필요하면 loopback에 한정하고 명시적으로 경고
 - `standard`
   - TLS 인증서 검증
-  - Keychain credential
-  - SSH, Cloud SQL Proxy, 기존 Kubernetes 리소스 연결
+  - AES-GCM local vault credential
+  - SSH, Cloud SQL Connector, 기존 Kubernetes 리소스 연결
   - 기본 timeout과 credential 비기록
 - `organizationManaged`
   - 조직이 배포한 변경 불가능한 대상 정의 사용
@@ -74,7 +74,7 @@ Solnari는 로컬 개발자부터 엄격한 조직 보안 환경까지 사용할
 | 로컬 PostgreSQL/MySQL | Direct | Local Development |
 | VPN/사내망 DB | Direct + TLS | Standard |
 | Bastion 뒤의 DB | SSH Tunnel | Standard |
-| 소규모 팀의 Cloud SQL | 로컬 Cloud SQL Auth Proxy | Standard |
+| 소규모 팀의 Cloud SQL | Node Cloud SQL Connector | Standard |
 | 기존 Kubernetes DB/relay | Existing Resource Port Forward | Standard |
 | 엄격한 조직 운영 DB | Managed GKE admin-db-proxy | Organization Managed |
 | 임시 개발 진단 | Temporary Relay | Local/Standard의 명시적 고급 옵션 |
@@ -174,9 +174,15 @@ spec:
 
 ### 인증 분리
 
-- GKE 터널 인증: 현재 사용자의 ADC 또는 gcloud 단기 인증
+- 로컬 Cloud SQL 인증: ADC를 사용하는 Google Auth Library와 Cloud SQL Connector
+- GKE 터널 인증: 현재 사용자의 ADC/OIDC credential을 사용하는 Kubernetes API client
 - Cloud SQL 인스턴스 연결: Proxy 전용 KSA/GSA와 Workload Identity
 - PostgreSQL 인증: 사용자별 IAM DB user 또는 승인된 IAM DB group
+
+Solnari는 `gcloud` 또는 로컬 `cloud-sql-proxy` 실행 파일을 호출하지 않는다. Cloud SQL
+리소스 조회, 인증, TLS 연결과 IAM DB 인증은 번들된 Node Core의 공식 라이브러리 안에서
+처리하고 단기 credential은 프로세스 메모리에만 둔다. 조직 관리형 GKE의
+`admin-db-proxy`는 클러스터 내부의 서버 측 구성요소이며 로컬 실행 파일과 구분한다.
 
 모든 사용자가 Proxy GSA 하나의 PostgreSQL identity로 접속하지 않도록 주의한다.
 Proxy가 자신의 GSA로 `--auto-iam-authn`을 수행하면 사용자별 DB 감사 요구와 충돌할 수
@@ -187,10 +193,14 @@ Solnari 사용자의 단기 IAM DB login token을 DB 드라이버에 메모리�
 ### 저장과 전달 규칙
 
 - 정적 GSA key, access token, 장기 kubeconfig를 Solnari가 저장하지 않는다.
-- 일반 DB password가 불가피한 경우 macOS Keychain만 사용한다.
-- 단기 token은 Keychain에도 저장하지 않고 세션 메모리에서만 보유한다.
+- 일반 DB password가 불가피한 경우 별도 256-bit key를 사용하는 AES-GCM local vault에
+  저장하고 directory/file 권한을 현재 사용자로 제한한다.
+- 자동 잠금 해제를 위해 vault key도 같은 사용자 영역에 존재한다는 한계를 문서와 UI에
+  명시하며, 서명된 배포 이후 system-backed credential store를 선택지로 재검토한다.
+- 단기 token은 local vault에도 저장하지 않고 세션 메모리에서만 보유한다.
 - token/password를 subprocess command-line argument로 전달하지 않는다.
-- credential 환경 변수 사용을 피하고, 불가피하면 해당 child에만 전달하고 즉시 폐기한다.
+- credential 환경 변수 사용을 피한다. Node Core에는 정제된 환경만 전달하고 사용자 보호
+  폴더를 가리키는 credential 경로는 전달하지 않는다.
 - UserDefaults, 설정 파일, 로그, crash report, telemetry, clipboard에 credential을 기록하지 않는다.
 - 앱은 기존 사용자 kubeconfig를 복사하거나 장기 보관하지 않는다. 필요하다면 임시
   kubeconfig를 세션 디렉터리에 만들고 종료 시 삭제하는 방식을 검토한다.
@@ -234,7 +244,7 @@ Codex가 수행하면 안 되는 행동:
 
 ### 관리형 연결 사전 검사 예시
 
-- 현재 gcloud account와 예상 사용자/group
+- 현재 Google 인증 principal과 예상 사용자/group
 - project, cluster, location, namespace
 - 최소 RBAC 및 불필요한 권한 부재
 - Service 유형, EndpointSlice, 실제 Pod UID
@@ -377,7 +387,7 @@ SQL, schema, 결과를 Codex나 외부 LLM에 자동 전송하지 않는다. 사
 
 추가 원칙:
 
-- Proxy 인증 또는 private 경로 실패 시 공개 경로로 fallback하지 않는다.
+- 관리형 Proxy 인증 또는 private 경로 실패 시 공개 경로로 fallback하지 않는다.
 - authorized network와 공개 IP를 자동 생성·활성화하지 않는다.
 - 운영 DB 권한 검증이 불완전하면 query를 실행하지 않는다.
 - 관리형 정책에서 TLS 검증을 끄는 옵션을 제공하지 않는다.
@@ -390,7 +400,9 @@ SQL, schema, 결과를 Codex나 외부 LLM에 자동 전송하지 않는다. 사
 
 - 연결 방법/보안 정책/접근 등급 모델
 - 관리형 연결 정의 로드 및 검증
-- gcloud/GKE 사용자 identity 사전 검사
+- Google Auth/Kubernetes API 기반 사용자 identity 사전 검사
+- Node Core의 Cloud SQL Admin API 조회와 공식 Cloud SQL Connector 세션
+- Node Core에서 모든 외부 subprocess 실행을 차단하는 런타임 경계
 - Service/EndpointSlice/Pod identity 검사
 - 안전한 loopback port-forward
 - 단기 IAM DB token의 메모리 처리
@@ -424,11 +436,12 @@ Solnari는 이 인프라를 임의로 생성하지 않고 검증 결과가 맞�
 ### 재사용 가능한 영역
 
 - SwiftUI workspace와 결과 UI
-- PostgreSQL/MySQL/SQLite engine adapter
+- SQLite 및 기존 Direct/SSH/Kubernetes engine adapter
+- SwiftUI와 Node Core 사이의 private stdio JSON-RPC 경계
+- Node Core의 Google Auth, Cloud SQL Connector, PostgreSQL/MySQL adapter
 - typed query result와 export
 - 프로필 이름과 비밀정보 분리
-- Keychain abstraction
-- 민감 profile payload의 device-only Keychain 저장과 opaque local index 이관
+- local AES-GCM credential vault와 connection definition 저장소
 - 포트 자동 할당과 loopback binding 기반
 - 기존 Service/Pod에 리소스 생성 없이 port-forward하는 일반 Kubernetes 경로
 - 보안 정책과 DB 접근 등급의 profile 저장 및 읽기 전용 session 차단
@@ -439,6 +452,7 @@ Solnari는 이 인프라를 임의로 생성하지 않고 검증 결과가 맞�
 - existing Kubernetes transport에 managed target 검증과 immutable policy 적용
 - 관리형 정책에서는 임시 Pod 생성 경로 제거
 - credential provider와 사용자별 IAM DB 인증
+- Direct/SSH/Kubernetes adapter의 Node Core 단계적 이전
 - target preflight 및 identity verifier
 - 세션 상태 머신, idle/max duration, sleep/user-switch 대응
 - parent-death supervisor와 orphan recovery
@@ -472,7 +486,7 @@ Solnari는 이 인프라를 임의로 생성하지 않고 검증 결과가 맞�
 
 ### Phase 3: Identity와 lifecycle
 
-- 사용자 gcloud/GKE identity 확인
+- Google Auth/Kubernetes API 기반 사용자 identity 확인
 - 사용자별 IAM DB token
 - DB current user/database 검증
 - idle/max timeout, sleep/user-switch 종료
@@ -516,7 +530,7 @@ Solnari는 이 인프라를 임의로 생성하지 않고 검증 결과가 맞�
 - 관리형 프로필 무결성 검증 및 서명 방식
 - 일반 Kubernetes existing-resource 모드에서 허용할 리소스 범위
 - 임시 relay 기능의 기본 포함 여부 또는 별도 실험 기능 처리
-- gcloud CLI 기반과 Google/GKE API native client의 단계적 전환 시점
+- Kubernetes CLI 임시 경로를 공식 Kubernetes API client로 전환하는 시점
 - PostgreSQL SQL parser 선택
 - 운영 변경 승인 UX와 조직별 승인 연동 범위
 - 감사 metadata의 로컬 저장 여부와 조직 수집 연동 방식
@@ -532,4 +546,5 @@ Solnari는 이 인프라를 임의로 생성하지 않고 검증 결과가 맞�
 7. UI 차단과 함께 IAM/RBAC/NetworkPolicy/DB role로 실제 권한을 강제한다.
 8. private 경로 실패는 fail closed이며 공개 경로 fallback을 제공하지 않는다.
 9. 일반 Direct/SSH/Cloud SQL/Kubernetes/SQLite 사용자는 계속 지원한다.
-10. 기존 UI와 엔진 구조는 재사용하고 연결·세션·정책 계층을 중심으로 재설계한다.
+10. Cloud SQL은 Node 공식 라이브러리만 사용하며 `gcloud`와 외부 Proxy fallback을 두지 않는다.
+11. 기존 UI와 엔진 구조는 재사용하고 연결·세션·정책 계층을 중심으로 재설계한다.

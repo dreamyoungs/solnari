@@ -30,7 +30,21 @@ struct SQLiteBackendIntegrationTests {
 
     _ = try await backend.execute(
       profileID: profile.id,
-      sql: "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+      sql: "CREATE TABLE teams (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+    )
+    _ = try await backend.execute(
+      profileID: profile.id,
+      sql: """
+        CREATE TABLE people (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL DEFAULT 'unknown',
+          team_id INTEGER REFERENCES teams(id)
+        )
+        """
+    )
+    _ = try await backend.execute(
+      profileID: profile.id,
+      sql: "CREATE INDEX idx_people_name ON people(name)"
     )
     _ = try await backend.execute(
       profileID: profile.id,
@@ -44,7 +58,22 @@ struct SQLiteBackendIntegrationTests {
     #expect(result.table.rows == [[.integer(1), .text("솔나리")]])
 
     let schema = try await backend.loadSchema(profileID: profile.id)
-    #expect(schema.contains { $0.name == "people" && $0.columnCount == 2 })
+    let people = try #require(schema.first { $0.name == "people" })
+    #expect(people.columnCount == 3)
+    let details = try await backend.loadSchemaObjectDetails(
+      profileID: profile.id,
+      object: people
+    )
+    #expect(details.columns.map(\.name) == ["id", "name", "team_id"])
+    #expect(details.columns.first?.isPrimaryKey == true)
+    #expect(details.columns[1].defaultValue == "'unknown'")
+    #expect(details.indexes.contains { $0.name == "idx_people_name" && $0.columns == ["name"] })
+    #expect(
+      details.constraints.contains {
+        $0.kind == .foreignKey && $0.columns == ["team_id"]
+          && $0.referencedTable == "teams" && $0.referencedColumns == ["id"]
+      })
+    #expect(details.definition?.contains("CREATE TABLE people") == true)
     await backend.disconnect(profileID: profile.id)
   }
 

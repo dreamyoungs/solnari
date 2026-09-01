@@ -12,6 +12,7 @@ struct NewConnectionView: View {
   @State private var autoFilledIAMUsername: String?
   @State private var cloudInstances: [CloudSQLInstanceSummary] = []
   @State private var cloudDatabases: [String] = []
+  @State private var cloudIAMUsers: [CloudSQLUserSummary] = []
   @State private var cloudDiscoveryState: CloudDiscoveryState = .idle
   @State private var discoveredProject = ""
   @FocusState private var focusedField: FocusedField?
@@ -107,7 +108,12 @@ struct NewConnectionView: View {
       guard project != discoveredProject else { return }
       cloudInstances = []
       cloudDatabases = []
+      cloudIAMUsers = []
       cloudDiscoveryState = .idle
+      if draft.transport == .cloudSQL, draft.useIAM {
+        adcIdentityState = .idle
+        Task { await resolveADCIdentityIfNeeded() }
+      }
     }
     .onChange(of: draft) {
       guard !isTesting, testState != .idle else { return }
@@ -312,6 +318,18 @@ struct NewConnectionView: View {
           .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
+      if draft.useIAM, cloudIAMUsers.count > 1 {
+        VStack(alignment: .leading, spacing: 7) {
+          fieldLabel("Available IAM database users")
+          Picker("", selection: $draft.user) {
+            ForEach(cloudIAMUsers) { user in
+              Text(user.name).tag(user.name)
+            }
+          }
+          .labelsHidden()
+          .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
       cloudDiscoveryStatus
       Toggle(isOn: $draft.useIAM) {
         Text(settings.text("Use automatic IAM database authentication"))
@@ -373,15 +391,9 @@ struct NewConnectionView: View {
           .font(.caption)
           .foregroundStyle(.primary)
           .textSelection(.enabled)
-        Text(
-          settings.text(
-            identity.source == .applicationDefaultCredentials
-              ? "IAM database user filled automatically"
-              : "Active gcloud account suggested; verify that it matches ADC"
-          )
-        )
-        .font(.caption2)
-        .foregroundStyle(.secondary)
+        Text(settings.text("IAM database user filled automatically"))
+          .font(.caption2)
+          .foregroundStyle(.secondary)
       }
     case .unavailable:
       Text(settings.text("Enter the IAM database user manually"))
@@ -503,7 +515,7 @@ struct NewConnectionView: View {
           .font(.caption.weight(.semibold))
         Text(
           settings.text(
-            "Passwords are stored in Keychain. Codex receives schema metadata and proposed SQL, never connection credentials."
+            "Passwords are encrypted in Solnari's local vault. Codex receives schema metadata and proposed SQL, never connection credentials."
           )
         )
         .font(.caption2)
@@ -668,7 +680,7 @@ struct NewConnectionView: View {
         ]
     case .cloudSQL:
       [
-        ("laptopcomputer", "This Mac"), ("shield.lefthalf.filled", "Cloud SQL Proxy"),
+        ("laptopcomputer", "This Mac"), ("shield.lefthalf.filled", "Cloud SQL Connector"),
         ("cloud.fill", "Cloud SQL instance"),
       ]
     case .ssh:
@@ -709,7 +721,7 @@ struct NewConnectionView: View {
         ? "Solnari opens the local file directly without a network connection."
         : "Solnari connects to the host and port directly. TLS can still protect traffic."
     case .cloudSQL:
-      "Cloud SQL Auth Proxy opens a local secure endpoint and refreshes short-lived credentials automatically."
+      "The bundled Node core uses Google's official connector and refreshes short-lived credentials automatically."
     case .ssh:
       "Solnari forwards a local port through your SSH agent without exposing the database publicly."
     case .kubernetes:
@@ -955,7 +967,7 @@ struct NewConnectionView: View {
       SecureField(
         settings.text(
           existingProfileID == nil
-            ? "Stored in macOS Keychain"
+            ? "Encrypted in Solnari's local vault"
             : "Leave blank to keep the saved password"
         ),
         text: $draft.password
@@ -994,6 +1006,7 @@ struct NewConnectionView: View {
       discoveredProject = project
       cloudInstances = instances
       cloudDatabases = []
+      cloudIAMUsers = []
       cloudDiscoveryState = .idle
 
       if instances.contains(where: { $0.name == draft.cloudInstance }) {
@@ -1017,12 +1030,17 @@ struct NewConnectionView: View {
     draft.cloudRegion = instance.region
     draft.engine = instance.engine
     cloudDatabases = []
+    cloudIAMUsers = []
     Task { await loadCloudDatabases(for: instance.name) }
   }
 
   private func loadCloudDatabases(for instanceName: String) async {
     let project = draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines)
     cloudDiscoveryState = .loadingDatabases
+    async let discoveredUsers: [CloudSQLUserSummary]? = try? Self.cloudSQLDiscoveryService.users(
+      project: project,
+      instance: instanceName
+    )
     do {
       let databases = try await Self.cloudSQLDiscoveryService.databases(
         project: project,
@@ -1033,6 +1051,9 @@ struct NewConnectionView: View {
         draft.cloudInstance == instanceName
       else { return }
       cloudDatabases = databases
+      let users = await discoveredUsers ?? []
+      cloudIAMUsers = users.filter(\.isIAMUser)
+      applyDiscoveredIAMUserIfPossible()
       cloudDiscoveryState = .idle
     } catch {
       guard draft.cloudInstance == instanceName else { return }
@@ -1048,7 +1069,10 @@ struct NewConnectionView: View {
       return
     }
     adcIdentityState = .resolving
-    let identity = await Self.googleCloudIdentityResolver.resolve()
+    let project = draft.cloudProject.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let identity = await Self.googleCloudIdentityResolver.resolve(
+      project: project.isEmpty ? nil : project
+    )
     guard draft.transport == .cloudSQL, draft.useIAM else { return }
     if let identity {
       adcIdentityState = .resolved(identity)
@@ -1069,6 +1093,18 @@ struct NewConnectionView: View {
     if trimmedUser.isEmpty || draft.user == autoFilledIAMUsername {
       draft.user = username
       autoFilledIAMUsername = username
+    }
+  }
+
+  private func applyDiscoveredIAMUserIfPossible() {
+    guard draft.useIAM else { return }
+    let groupUsers = cloudIAMUsers.filter { $0.type == "CLOUD_IAM_GROUP_USER" }
+    let candidates = groupUsers.count == 1 ? groupUsers : cloudIAMUsers
+    guard candidates.count == 1, let candidate = candidates.first else { return }
+    let current = draft.user.trimmingCharacters(in: .whitespacesAndNewlines)
+    if current.isEmpty || draft.user == autoFilledIAMUsername {
+      draft.user = candidate.name
+      autoFilledIAMUsername = candidate.name
     }
   }
 

@@ -3,25 +3,6 @@ import Testing
 @testable import Solnari
 
 struct TransportCommandBuilderTests {
-  @Test("Cloud SQL 연결 이름과 IAM 옵션을 안전한 인자로 구성한다")
-  func cloudSQLArguments() throws {
-    let profile = networkProfile(
-      transport: .cloudSQL,
-      cloudSQL: CloudSQLConfiguration(
-        project: "sample-project",
-        region: "asia-northeast3",
-        instance: "primary",
-        useIAMAuthentication: true
-      )
-    )
-    let command = try TransportCommandBuilder.cloudSQL(
-      executable: "/cloud-sql-proxy", profile: profile, localPort: 15_001
-    )
-    #expect(command.arguments.contains("--auto-iam-authn"))
-    #expect(command.arguments.last == "sample-project:asia-northeast3:primary")
-    #expect(!command.arguments.joined().contains("secret"))
-  }
-
   @Test("SSH 포워딩은 DB 계정과 SSH 계정을 분리한다")
   func sshArguments() throws {
     let profile = networkProfile(

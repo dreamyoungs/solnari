@@ -16,8 +16,8 @@
 ```text
 사용자
   → Solnari UI와 policy engine
-  → macOS Keychain / provider credential store
-  → local helper process (cloud-sql-proxy, ssh, kubectl)
+  → local AES-GCM vault / provider credential store
+  → bundled Node core / local helper process (ssh, kubectl)
   → private 또는 local network path
   → database role
 
@@ -27,8 +27,9 @@
   → 위의 session 경계
 ```
 
-Solnari의 UI는 실수 방지 계층입니다. 최종 권한은 macOS Keychain 접근 제어, provider IAM,
-Kubernetes RBAC, network policy와 database role이 강제해야 합니다.
+Solnari의 UI는 실수 방지 계층입니다. 최종 권한은 provider IAM, Kubernetes RBAC, network
+policy와 database role이 강제해야 합니다. 현재 local vault는 평문 노출 방지 계층이며 동일
+사용자 권한을 탈취한 process에 대한 system credential store 수준의 격리를 제공하지 않습니다.
 
 ## 고려하는 공격과 실수
 
@@ -55,8 +56,10 @@ Kubernetes RBAC, network policy와 database role이 강제해야 합니다.
 
 ## 현재 보장과 차이
 
-현재 구현은 device-only Keychain profile/password, 자동 IAM의 password 비사용, 명시적 transport 선택,
-loopback tunnel, 정상 종료·잠금·절전 cleanup과 Agent의 명시적 editor handoff를 제공합니다.
+현재 구현은 local connection profile과 AES-GCM credential vault, 자동 IAM의 password 비사용,
+명시적 transport 선택, loopback tunnel, 정상 종료·잠금·절전 cleanup과 Agent의 명시적 editor
+handoff를 제공합니다. 자동 잠금 해제를 위한 encryption key도 같은 사용자 영역에 있으므로,
+동일 사용자 권한을 탈취한 process에 대한 Keychain 수준의 보호는 제공하지 않습니다.
 읽기 전용 profile은 보수적인 SQL 사전 검사와 database session 쓰기 차단을 함께 사용합니다.
 
 아직 다음 경계는 완성되지 않았습니다.

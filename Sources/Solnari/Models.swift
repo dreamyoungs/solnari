@@ -306,7 +306,7 @@ enum SchemaObjectKind: String, Hashable, Codable, Sendable {
   }
 }
 
-struct SchemaObject: Identifiable, Hashable, Sendable {
+struct SchemaObject: Identifiable, Hashable, Codable, Sendable {
   var id: String { "\(schema).\(name).\(kind.rawValue)" }
   let schema: String
   let name: String
@@ -323,6 +323,75 @@ struct SchemaObject: Identifiable, Hashable, Sendable {
     case .function: "function"
     }
   }
+}
+
+struct SchemaColumn: Identifiable, Hashable, Codable, Sendable {
+  var id: String { "\(ordinalPosition)-\(name)" }
+  let ordinalPosition: Int
+  let name: String
+  let dataType: String
+  let isNullable: Bool
+  let defaultValue: String?
+  let characterSet: String?
+  let collation: String?
+  let comment: String?
+  let isPrimaryKey: Bool
+
+  var dataTypeDisplay: String { dataType.isEmpty ? "—" : dataType }
+  var defaultDisplay: String { defaultValue ?? "—" }
+  var textRulesDisplay: String {
+    let rules = [characterSet, collation]
+      .compactMap { value in
+        guard let value, !value.isEmpty else { return nil }
+        return value
+      }
+      .joined(separator: " · ")
+    return rules.isEmpty ? "—" : rules
+  }
+}
+
+struct SchemaIndex: Identifiable, Hashable, Codable, Sendable {
+  var id: String { name }
+  let name: String
+  let columns: [String]
+  let isUnique: Bool
+  let isPrimary: Bool
+  let method: String?
+}
+
+enum SchemaConstraintKind: String, Hashable, Codable, Sendable {
+  case primaryKey = "Primary key"
+  case foreignKey = "Foreign key"
+  case unique = "Unique"
+  case check = "Check"
+  case exclusion = "Exclusion"
+  case other = "Other"
+}
+
+struct SchemaConstraint: Identifiable, Hashable, Codable, Sendable {
+  var id: String { name }
+  let name: String
+  let kind: SchemaConstraintKind
+  let columns: [String]
+  let referencedSchema: String?
+  let referencedTable: String?
+  let referencedColumns: [String]
+  let definition: String?
+
+  var referenceDisplay: String {
+    guard let referencedTable else { return "" }
+    let table = referencedSchema.map { "\($0).\(referencedTable)" } ?? referencedTable
+    guard !referencedColumns.isEmpty else { return table }
+    return "\(table) (\(referencedColumns.joined(separator: ", ")))"
+  }
+}
+
+struct SchemaObjectDetails: Hashable, Codable, Sendable {
+  let object: SchemaObject
+  let columns: [SchemaColumn]
+  let indexes: [SchemaIndex]
+  let constraints: [SchemaConstraint]
+  let definition: String?
 }
 
 struct EditorTab: Identifiable, Hashable, Sendable {
@@ -532,7 +601,7 @@ struct ConnectionDraft: Equatable, Sendable {
   }
 }
 
-struct ConnectionMetadata: Hashable, Sendable {
+struct ConnectionMetadata: Hashable, Codable, Sendable {
   let latencyMilliseconds: Int
   let serverVersion: String
   let serverEncoding: String
@@ -550,7 +619,6 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case unsupportedConnection
   case incompleteConnection
   case missingConnection
-  case missingPassword
   case notConnected
   case invalidServerResponse
   case missingExecutable(String)
@@ -558,7 +626,6 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case transportTimedOut
   case queryNotAllowedForAccessLevel
   case invalidProfileStore
-  case keychain(OSStatus)
 
   var errorDescription: String? {
     switch self {
@@ -566,7 +633,6 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .unsupportedConnection: "SQLite supports direct file connections only."
     case .incompleteConnection: "Fill in every required connection field."
     case .missingConnection: "The selected connection no longer exists."
-    case .missingPassword: "The password is not available in macOS Keychain."
     case .notConnected: "Connect to the database before running a query."
     case .invalidServerResponse: "The database returned an unexpected response."
     case .missingExecutable(let name): "Install or configure the required \(name) command."
@@ -575,8 +641,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .queryNotAllowedForAccessLevel:
       "This SQL is not allowed by the connection's access level."
     case .invalidProfileStore:
-      "The connection profile index and macOS Keychain are inconsistent."
-    case .keychain(let status): "macOS Keychain returned error \(status)."
+      "The local connection profile store is invalid."
     }
   }
 }

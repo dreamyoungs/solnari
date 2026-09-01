@@ -10,24 +10,21 @@ optional in the profile. SQLite instead opens the selected absolute file path th
 
 ## Google Cloud SQL
 
-Solnari runs Cloud SQL Auth Proxy v2 on a random loopback port and connects the database driver to
-that endpoint. The instance is addressed as `project:region:instance`. Application Default
-Credentials are resolved by the proxy; optional automatic IAM database authentication adds the
-proxy's `--auto-iam-authn` flag. In automatic IAM mode, Solnari derives the engine-specific database
-username from the ADC principal when possible and never asks for, passes, or stores a database
-password. PostgreSQL uses the full user email (or a service-account email without the
-`.gserviceaccount.com` suffix); MySQL uses the portion before `@`. If an older user ADC file does
-not expose its principal, Solnari suggests the active gcloud account and asks the user to verify
-that it matches ADC. Built-in database authentication keeps the password in Keychain.
+The bundled Node core uses `google-auth-library` and `@google-cloud/cloud-sql-connector` directly.
+It does not execute the Google Cloud CLI or an external Cloud SQL Auth Proxy. The connector handles
+ephemeral certificates, TLS, IAM authorization, and optional automatic IAM database authentication.
+In automatic IAM mode Solnari never asks for, passes, or stores a database password. PostgreSQL uses
+the full IAM user email (or a service-account email without `.gserviceaccount.com`); MySQL uses the
+portion before `@`. When the ADC token does not contain an email scope, Solnari reads the instance's
+Cloud SQL IAM database-user records and can fill an unambiguous user or group-user candidate. The
+user can still verify or choose the IAM database username manually. Built-in database authentication
+keeps its password in Solnari's local AES-GCM credential vault.
 
 After a project ID is entered, Solnari can use an ADC access token in memory to query the Cloud SQL
 Admin API for supported PostgreSQL and MySQL instances and their databases. The token is sent only
 in the authorization header, is never added to a URL or persisted, and manual region, instance, and
 database entry remains available when discovery is unavailable or intentionally not permitted.
-Discovery currently obtains the in-memory ADC access token through the installed `gcloud` CLI.
-
-Install `cloud-sql-proxy` and authenticate Application Default Credentials before connecting. Use
-`SOLNARI_CLOUD_SQL_PROXY` to point Solnari at a nonstandard binary location.
+The Node child cannot spawn subprocesses, so library CLI fallback paths are disabled by construction.
 
 ## SSH tunnel
 

@@ -1,12 +1,20 @@
 import Foundation
 
-struct CloudSQLInstanceSummary: Identifiable, Hashable, Sendable {
+struct CloudSQLInstanceSummary: Identifiable, Hashable, Codable, Sendable {
   let name: String
   let region: String
   let engine: DatabaseEngine
   let state: String
 
   var id: String { name }
+}
+
+struct CloudSQLUserSummary: Identifiable, Hashable, Codable, Sendable {
+  let name: String
+  let type: String
+
+  var id: String { "\(type):\(name)" }
+  var isIAMUser: Bool { type.hasPrefix("CLOUD_IAM") && type != "CLOUD_IAM_GROUP" }
 }
 
 enum CloudSQLDiscoveryError: LocalizedError, Sendable {
@@ -28,124 +36,78 @@ enum CloudSQLDiscoveryError: LocalizedError, Sendable {
 }
 
 actor GoogleCloudSQLDiscoveryService {
-  typealias TokenLoader = @Sendable () async throws -> String
-  typealias DataLoader = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
+  typealias InstanceLoader = @Sendable (String) async throws -> [CloudSQLInstanceSummary]
+  typealias DatabaseLoader = @Sendable (String, String) async throws -> [String]
+  typealias UserLoader = @Sendable (String, String) async throws -> [CloudSQLUserSummary]
 
-  private struct InstancesResponse: Decodable {
-    struct Instance: Decodable {
-      let name: String
-      let region: String?
-      let databaseVersion: String
-      let state: String?
-    }
-
-    let items: [Instance]?
+  private struct ProjectParameters: Codable, Sendable {
+    let project: String
   }
 
-  private struct DatabasesResponse: Decodable {
-    struct Database: Decodable {
-      let name: String
-    }
-
-    let items: [Database]?
+  private struct DatabaseParameters: Codable, Sendable {
+    let project: String
+    let instance: String
   }
 
-  private let tokenLoader: TokenLoader
-  private let dataLoader: DataLoader
+  private let instanceLoader: InstanceLoader
+  private let databaseLoader: DatabaseLoader
+  private let userLoader: UserLoader
 
   init(
-    tokenLoader: @escaping TokenLoader = GoogleCloudSQLDiscoveryService.loadADCAccessToken,
-    dataLoader: @escaping DataLoader = GoogleCloudSQLDiscoveryService.loadData
+    instanceLoader: @escaping InstanceLoader = GoogleCloudSQLDiscoveryService.loadInstances,
+    databaseLoader: @escaping DatabaseLoader = GoogleCloudSQLDiscoveryService.loadDatabases,
+    userLoader: @escaping UserLoader = GoogleCloudSQLDiscoveryService.loadUsers
   ) {
-    self.tokenLoader = tokenLoader
-    self.dataLoader = dataLoader
+    self.instanceLoader = instanceLoader
+    self.databaseLoader = databaseLoader
+    self.userLoader = userLoader
   }
 
   func instances(project: String) async throws -> [CloudSQLInstanceSummary] {
     let project = try validatedProject(project)
-    let response: InstancesResponse = try await request(
-      project: project,
-      path: "/v1/projects/\(project)/instances",
-      queryItems: [
-        URLQueryItem(name: "filter", value: "instanceType:CLOUD_SQL_INSTANCE"),
-        URLQueryItem(name: "maxResults", value: "1000"),
-      ]
-    )
-    return (response.items ?? []).compactMap { instance in
-      let engine: DatabaseEngine
-      if instance.databaseVersion.hasPrefix("POSTGRES_") {
-        engine = .postgresql
-      } else if instance.databaseVersion.hasPrefix("MYSQL_") {
-        engine = .mysql
-      } else {
-        return nil
-      }
-      return CloudSQLInstanceSummary(
-        name: instance.name,
-        region: instance.region ?? "",
-        engine: engine,
-        state: instance.state ?? "UNKNOWN"
-      )
-    }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    do {
+      return try await instanceLoader(project)
+    } catch let error as NodeBackendError {
+      throw Self.discoveryError(from: error)
+    } catch {
+      throw CloudSQLDiscoveryError.invalidResponse
+    }
   }
 
   func databases(project: String, instance: String) async throws -> [String] {
     let project = try validatedProject(project)
     guard
-      let encodedInstance = instance.addingPercentEncoding(
-        withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
-      ), !encodedInstance.isEmpty
+      instance.range(
+        of: "^[A-Za-z0-9_-]{1,98}$",
+        options: .regularExpression
+      ) != nil
     else {
       throw CloudSQLDiscoveryError.invalidResponse
     }
-    let response: DatabasesResponse = try await request(
-      project: project,
-      path: "/v1/projects/\(project)/instances/\(encodedInstance)/databases",
-      queryItems: []
-    )
-    return (response.items ?? []).map(\.name).sorted {
-      $0.localizedStandardCompare($1) == .orderedAscending
+    do {
+      return try await databaseLoader(project, instance)
+    } catch let error as NodeBackendError {
+      throw Self.discoveryError(from: error)
+    } catch {
+      throw CloudSQLDiscoveryError.invalidResponse
     }
   }
 
-  private func request<Response: Decodable>(
-    project: String,
-    path: String,
-    queryItems: [URLQueryItem]
-  ) async throws -> Response {
-    let token: String
-    do {
-      token = try await tokenLoader()
-    } catch {
-      throw CloudSQLDiscoveryError.authenticationUnavailable
+  func users(project: String, instance: String) async throws -> [CloudSQLUserSummary] {
+    let project = try validatedProject(project)
+    guard
+      instance.range(
+        of: "^[A-Za-z0-9_-]{1,98}$",
+        options: .regularExpression
+      ) != nil
+    else {
+      throw CloudSQLDiscoveryError.invalidResponse
     }
-    guard !token.isEmpty else { throw CloudSQLDiscoveryError.authenticationUnavailable }
-
-    var components = URLComponents()
-    components.scheme = "https"
-    components.host = "sqladmin.googleapis.com"
-    components.percentEncodedPath = path
-    components.queryItems = queryItems.isEmpty ? nil : queryItems
-    guard let url = components.url else { throw CloudSQLDiscoveryError.invalidResponse }
-    var request = URLRequest(url: url)
-    request.cachePolicy = .reloadIgnoringLocalCacheData
-    request.timeoutInterval = 15
-    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    request.setValue(project, forHTTPHeaderField: "X-Goog-User-Project")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-    let (data, response) = try await dataLoader(request)
-    guard data.count <= 8_388_608 else { throw CloudSQLDiscoveryError.invalidResponse }
-    switch response.statusCode {
-    case 200..<300:
-      return try JSONDecoder().decode(Response.self, from: data)
-    case 401:
-      throw CloudSQLDiscoveryError.authenticationUnavailable
-    case 403:
-      throw CloudSQLDiscoveryError.permissionDenied
-    case 404:
-      throw CloudSQLDiscoveryError.apiUnavailable
-    default:
+    do {
+      return try await userLoader(project, instance)
+    } catch let error as NodeBackendError {
+      throw Self.discoveryError(from: error)
+    } catch {
       throw CloudSQLDiscoveryError.invalidResponse
     }
   }
@@ -163,47 +125,40 @@ actor GoogleCloudSQLDiscoveryService {
     return project
   }
 
-  private static func loadADCAccessToken() async throws -> String {
-    let executable = try ExecutableResolver.resolve(
-      name: "gcloud",
-      environmentKey: "SOLNARI_GCLOUD"
+  private static func loadInstances(_ project: String) async throws
+    -> [CloudSQLInstanceSummary]
+  {
+    try await NodeBackendClient.shared.call(
+      method: "cloudSql.instances",
+      params: ProjectParameters(project: project)
     )
-    let process = Process()
-    let output = Pipe()
-    process.executableURL = URL(fileURLWithPath: executable)
-    process.arguments = ["auth", "application-default", "print-access-token", "--quiet"]
-    process.standardOutput = output
-    process.standardError = FileHandle.nullDevice
-    let result: (Int32, Data) = try await withCheckedThrowingContinuation { continuation in
-      process.terminationHandler = { process in
-        continuation.resume(
-          returning: (process.terminationStatus, output.fileHandleForReading.readDataToEndOfFile()))
-      }
-      do {
-        try process.run()
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-    guard result.0 == 0, result.1.count <= 16_384 else {
-      throw CloudSQLDiscoveryError.authenticationUnavailable
-    }
-    let token = String(decoding: result.1, as: UTF8.self)
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !token.isEmpty else { throw CloudSQLDiscoveryError.authenticationUnavailable }
-    return token
   }
 
-  private static func loadData(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.urlCache = nil
-    configuration.httpCookieStorage = nil
-    let session = URLSession(configuration: configuration)
-    defer { session.invalidateAndCancel() }
-    let (data, response) = try await session.data(for: request)
-    guard let response = response as? HTTPURLResponse else {
-      throw CloudSQLDiscoveryError.invalidResponse
+  private static func loadDatabases(_ project: String, _ instance: String) async throws
+    -> [String]
+  {
+    try await NodeBackendClient.shared.call(
+      method: "cloudSql.databases",
+      params: DatabaseParameters(project: project, instance: instance)
+    )
+  }
+
+  private static func loadUsers(_ project: String, _ instance: String) async throws
+    -> [CloudSQLUserSummary]
+  {
+    try await NodeBackendClient.shared.call(
+      method: "cloudSql.users",
+      params: DatabaseParameters(project: project, instance: instance)
+    )
+  }
+
+  private static func discoveryError(from error: NodeBackendError) -> CloudSQLDiscoveryError {
+    guard case .backend(let code, _) = error else { return .authenticationUnavailable }
+    return switch code {
+    case "GOOGLE_PERMISSION_DENIED": .permissionDenied
+    case "GOOGLE_API_UNAVAILABLE": .apiUnavailable
+    case "GOOGLE_AUTHENTICATION_UNAVAILABLE": .authenticationUnavailable
+    default: .invalidResponse
     }
-    return (data, response)
   }
 }

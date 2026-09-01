@@ -12,18 +12,43 @@ case "$configuration" in
 esac
 
 cd "$repository_root"
+node_executable="${SOLNARI_NODE:-$(command -v node || true)}"
+if [[ -z "$node_executable" || ! -x "$node_executable" ]]; then
+  print -u2 "Node.js 24 or newer is required to build Solnari."
+  exit 69
+fi
+node_major="$($node_executable -p 'Number(process.versions.node.split(`.`)[0])')"
+if [[ "$node_major" -lt 24 ]]; then
+  print -u2 "Node.js 24 or newer is required to build Solnari."
+  exit 69
+fi
+npm --prefix "$repository_root/backend" run build
 swift build --configuration "$configuration" --product Solnari
 binary_directory="$(swift build --configuration "$configuration" --show-bin-path)"
 output_directory="$repository_root/.build/app/$configuration"
 application_path="$output_directory/Solnari.app"
 staging_directory="$(mktemp -d "${TMPDIR:-/tmp}/solnari-app.XXXXXX")"
 icon_directory="$(mktemp -d "${TMPDIR:-/tmp}/solnari-icon.XXXXXX")"
-trap 'rm -rf "$staging_directory" "$icon_directory"' EXIT
+cleanup() {
+  rm -rf "$staging_directory" "$icon_directory"
+}
+trap cleanup EXIT
 
 staged_application="$staging_directory/Solnari.app"
-mkdir -p "$staged_application/Contents/MacOS" "$staged_application/Contents/Resources"
+mkdir -p \
+  "$staged_application/Contents/MacOS" \
+  "$staged_application/Contents/Resources/Node/bin" \
+  "$staged_application/Contents/Resources/NodeBackend"
 /usr/bin/ditto "$binary_directory/Solnari" "$staged_application/Contents/MacOS/Solnari"
 /usr/bin/ditto "$repository_root/App/Info.plist" "$staged_application/Contents/Info.plist"
+/usr/bin/ditto "$node_executable" "$staged_application/Contents/Resources/Node/bin/node"
+/bin/chmod 755 "$staged_application/Contents/Resources/Node/bin/node"
+/usr/bin/ditto \
+  "$repository_root/backend/dist/server.cjs" \
+  "$staged_application/Contents/Resources/NodeBackend/server.cjs"
+/usr/bin/ditto \
+  "$repository_root/backend/src/subprocess-guard.cjs" \
+  "$staged_application/Contents/Resources/NodeBackend/subprocess-guard.cjs"
 
 resource_bundle="$binary_directory/Solnari_Solnari.bundle"
 if [[ -d "$resource_bundle" ]]; then
@@ -54,7 +79,15 @@ done
 /usr/bin/iconutil --convert icns "$iconset" \
   --output "$staged_application/Contents/Resources/Solnari.icns"
 
-/usr/bin/codesign --force --deep --sign - --timestamp=none "$staged_application"
+signing_identity="${SOLNARI_CODESIGN_IDENTITY:--}"
+codesign_arguments=(--force --deep --sign "$signing_identity" --timestamp=none)
+if [[ "$signing_identity" == "-" ]]; then
+  codesign_arguments+=(
+    --requirements
+    '=designated => identifier "com.dreamyoungs.solnari"'
+  )
+fi
+/usr/bin/codesign "${codesign_arguments[@]}" "$staged_application"
 mkdir -p "$output_directory"
 if [[ -e "$application_path" ]]; then
   rm -rf "$application_path"

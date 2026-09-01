@@ -12,24 +12,6 @@ struct TransportCommand: Hashable, Sendable {
 }
 
 enum TransportCommandBuilder {
-  static func cloudSQL(
-    executable: String, profile: ConnectionProfile, localPort: Int
-  ) throws -> TransportCommand {
-    guard let configuration = profile.cloudSQL else {
-      throw SolnariDatabaseError.incompleteConnection
-    }
-    var arguments = [
-      "--address=127.0.0.1",
-      "--port=\(localPort)",
-      "--quiet",
-    ]
-    if configuration.useIAMAuthentication {
-      arguments.append("--auto-iam-authn")
-    }
-    arguments.append(configuration.connectionName)
-    return TransportCommand(executable: executable, arguments: arguments)
-  }
-
   static func ssh(
     executable: String, profile: ConnectionProfile, localPort: Int
   ) throws -> TransportCommand {
@@ -137,7 +119,6 @@ enum TransportCommandBuilder {
 }
 
 struct TransportExecutables: Sendable {
-  var cloudSQLProxy: String?
   var ssh: String?
   var kubectl: String?
 
@@ -180,7 +161,7 @@ actor ConnectionTransportManager {
     case .direct:
       return TransportEndpoint(host: profile.host, port: profile.port)
     case .cloudSQL:
-      return try await openCloudSQL(profile)
+      throw SolnariDatabaseError.unsupportedConnection
     case .ssh:
       return try await openSSH(profile)
     case .kubernetes:
@@ -217,27 +198,6 @@ actor ConnectionTransportManager {
     }
     for _ in 0..<10 where process.isRunning {
       try? await Task.sleep(for: .milliseconds(50))
-    }
-  }
-
-  private func openCloudSQL(_ profile: ConnectionProfile) async throws -> TransportEndpoint {
-    let executable =
-      try executables.cloudSQLProxy
-      ?? ExecutableResolver.resolve(
-        name: "cloud-sql-proxy", environmentKey: "SOLNARI_CLOUD_SQL_PROXY"
-      )
-    let port = try Self.availablePort()
-    let command = try TransportCommandBuilder.cloudSQL(
-      executable: executable, profile: profile, localPort: port
-    )
-    let process = try start(command)
-    sessions[profile.id] = Session(processes: [process], cleanup: nil)
-    do {
-      try await waitUntilListening(port: port, process: process)
-      return TransportEndpoint(host: "127.0.0.1", port: port)
-    } catch {
-      await close(profileID: profile.id)
-      throw error
     }
   }
 

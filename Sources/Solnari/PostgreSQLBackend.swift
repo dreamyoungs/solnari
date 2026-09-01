@@ -9,6 +9,24 @@ actor PostgreSQLBackend {
 
   private var sessions: [UUID: Session] = [:]
 
+  private struct IndexAccumulator {
+    let name: String
+    let isUnique: Bool
+    let isPrimary: Bool
+    let method: String?
+    var columns: [String]
+  }
+
+  private struct ConstraintAccumulator {
+    let name: String
+    let kind: SchemaConstraintKind
+    let referencedSchema: String?
+    let referencedTable: String?
+    let definition: String?
+    var columns: [String]
+    var referencedColumns: [String]
+  }
+
   deinit {
     for session in sessions.values {
       session.runTask.cancel()
@@ -88,6 +106,233 @@ actor PostgreSQLBackend {
         ))
     }
     return objects
+  }
+
+  func loadSchemaObjectDetails(profileID: UUID, object: SchemaObject) async throws
+    -> SchemaObjectDetails
+  {
+    guard let client = sessions[profileID]?.client else {
+      throw SolnariDatabaseError.notConnected
+    }
+
+    let columnQuery: PostgresQuery = """
+      SELECT
+        CAST(attribute.attnum AS bigint) AS ordinal_position,
+        attribute.attname AS column_name,
+        pg_catalog.format_type(attribute.atttypid, attribute.atttypmod) AS data_type,
+        NOT attribute.attnotnull AS is_nullable,
+        pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid) AS default_value,
+        column_collation.collname AS collation_name,
+        pg_catalog.col_description(relation.oid, attribute.attnum) AS column_comment,
+        EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_constraint AS primary_constraint
+          WHERE primary_constraint.conrelid = relation.oid
+            AND primary_constraint.contype = 'p'
+            AND attribute.attnum = ANY(primary_constraint.conkey)
+        ) AS is_primary_key
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      JOIN pg_catalog.pg_attribute AS attribute ON attribute.attrelid = relation.oid
+      LEFT JOIN pg_catalog.pg_attrdef AS default_value
+        ON default_value.adrelid = relation.oid
+        AND default_value.adnum = attribute.attnum
+      LEFT JOIN pg_catalog.pg_collation AS column_collation
+        ON column_collation.oid = attribute.attcollation
+      WHERE namespace.nspname = \(object.schema)
+        AND relation.relname = \(object.name)
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+      ORDER BY attribute.attnum;
+      """
+    let columnRows = try await metadataRows(
+      using: client,
+      query: columnQuery,
+      stage: .columns
+    )
+    var columns: [SchemaColumn] = []
+    for row in columnRows {
+      let cells = Array(row)
+      guard cells.count == 8 else { continue }
+      columns.append(
+        SchemaColumn(
+          ordinalPosition: Int(clamping: try cells[0].decode(Int64.self)),
+          name: try cells[1].decode(String.self),
+          dataType: try cells[2].decode(String.self),
+          isNullable: try cells[3].decode(Bool.self),
+          defaultValue: try? cells[4].decode(String.self),
+          characterSet: nil,
+          collation: try? cells[5].decode(String.self),
+          comment: try? cells[6].decode(String.self),
+          isPrimaryKey: try cells[7].decode(Bool.self)
+        ))
+    }
+
+    let indexQuery: PostgresQuery = """
+      SELECT
+        index_relation.relname AS index_name,
+        index_record.indisunique AS is_unique,
+        index_record.indisprimary AS is_primary,
+        access_method.amname AS index_method,
+        COALESCE(
+          attribute.attname,
+          pg_catalog.pg_get_indexdef(
+            index_record.indexrelid,
+            CAST(index_key.ordinal_position AS integer),
+            TRUE
+          )
+        ) AS column_name
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      JOIN pg_catalog.pg_index AS index_record ON index_record.indrelid = relation.oid
+      JOIN pg_catalog.pg_class AS index_relation ON index_relation.oid = index_record.indexrelid
+      JOIN pg_catalog.pg_am AS access_method ON access_method.oid = index_relation.relam
+      LEFT JOIN LATERAL unnest(index_record.indkey) WITH ORDINALITY
+        AS index_key(attribute_number, ordinal_position) ON TRUE
+      LEFT JOIN pg_catalog.pg_attribute AS attribute
+        ON attribute.attrelid = relation.oid
+        AND attribute.attnum = index_key.attribute_number
+      WHERE namespace.nspname = \(object.schema)
+        AND relation.relname = \(object.name)
+      ORDER BY index_relation.relname, index_key.ordinal_position;
+      """
+    let indexRows = try await metadataRows(
+      using: client,
+      query: indexQuery,
+      stage: .indexes
+    )
+    var indexOrder: [String] = []
+    var indexAccumulators: [String: IndexAccumulator] = [:]
+    for row in indexRows {
+      let cells = Array(row)
+      guard cells.count == 5 else { continue }
+      let name = try cells[0].decode(String.self)
+      if indexAccumulators[name] == nil {
+        indexOrder.append(name)
+        indexAccumulators[name] = IndexAccumulator(
+          name: name,
+          isUnique: try cells[1].decode(Bool.self),
+          isPrimary: try cells[2].decode(Bool.self),
+          method: try? cells[3].decode(String.self),
+          columns: []
+        )
+      }
+      if let column = try? cells[4].decode(String.self) {
+        indexAccumulators[name]?.columns.append(column)
+      }
+    }
+    let indexes = indexOrder.compactMap { name -> SchemaIndex? in
+      guard let index = indexAccumulators[name] else { return nil }
+      return SchemaIndex(
+        name: index.name,
+        columns: index.columns,
+        isUnique: index.isUnique,
+        isPrimary: index.isPrimary,
+        method: index.method
+      )
+    }
+
+    let constraintQuery: PostgresQuery = """
+      SELECT
+        constraint_record.conname AS constraint_name,
+        CAST(constraint_record.contype AS text) AS constraint_type,
+        attribute.attname AS column_name,
+        referenced_namespace.nspname AS referenced_schema,
+        referenced_relation.relname AS referenced_table,
+        referenced_attribute.attname AS referenced_column,
+        pg_catalog.pg_get_constraintdef(constraint_record.oid, TRUE) AS definition
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+      JOIN pg_catalog.pg_constraint AS constraint_record
+        ON constraint_record.conrelid = relation.oid
+      LEFT JOIN LATERAL unnest(constraint_record.conkey) WITH ORDINALITY
+        AS constraint_key(attribute_number, ordinal_position) ON TRUE
+      LEFT JOIN pg_catalog.pg_attribute AS attribute
+        ON attribute.attrelid = relation.oid
+        AND attribute.attnum = constraint_key.attribute_number
+      LEFT JOIN pg_catalog.pg_class AS referenced_relation
+        ON referenced_relation.oid = constraint_record.confrelid
+      LEFT JOIN pg_catalog.pg_namespace AS referenced_namespace
+        ON referenced_namespace.oid = referenced_relation.relnamespace
+      LEFT JOIN LATERAL unnest(constraint_record.confkey) WITH ORDINALITY
+        AS referenced_key(attribute_number, ordinal_position)
+        ON referenced_key.ordinal_position = constraint_key.ordinal_position
+      LEFT JOIN pg_catalog.pg_attribute AS referenced_attribute
+        ON referenced_attribute.attrelid = referenced_relation.oid
+        AND referenced_attribute.attnum = referenced_key.attribute_number
+      WHERE namespace.nspname = \(object.schema)
+        AND relation.relname = \(object.name)
+      ORDER BY constraint_record.conname, constraint_key.ordinal_position;
+      """
+    let constraintRows = try await metadataRows(
+      using: client,
+      query: constraintQuery,
+      stage: .constraints
+    )
+    var constraintOrder: [String] = []
+    var constraintAccumulators: [String: ConstraintAccumulator] = [:]
+    for row in constraintRows {
+      let cells = Array(row)
+      guard cells.count == 7 else { continue }
+      let name = try cells[0].decode(String.self)
+      if constraintAccumulators[name] == nil {
+        constraintOrder.append(name)
+        constraintAccumulators[name] = ConstraintAccumulator(
+          name: name,
+          kind: Self.constraintKind(try cells[1].decode(String.self)),
+          referencedSchema: try? cells[3].decode(String.self),
+          referencedTable: try? cells[4].decode(String.self),
+          definition: try? cells[6].decode(String.self),
+          columns: [],
+          referencedColumns: []
+        )
+      }
+      if let column = try? cells[2].decode(String.self) {
+        constraintAccumulators[name]?.columns.append(column)
+      }
+      if let referencedColumn = try? cells[5].decode(String.self) {
+        constraintAccumulators[name]?.referencedColumns.append(referencedColumn)
+      }
+    }
+    let constraints = constraintOrder.compactMap { name -> SchemaConstraint? in
+      guard let constraint = constraintAccumulators[name] else { return nil }
+      return SchemaConstraint(
+        name: constraint.name,
+        kind: constraint.kind,
+        columns: constraint.columns,
+        referencedSchema: constraint.referencedSchema,
+        referencedTable: constraint.referencedTable,
+        referencedColumns: constraint.referencedColumns,
+        definition: constraint.definition
+      )
+    }
+
+    var definition: String?
+    if object.kind == .view || object.kind == .materializedView {
+      let definitionQuery: PostgresQuery = """
+        SELECT pg_catalog.pg_get_viewdef(relation.oid, TRUE) AS definition
+        FROM pg_catalog.pg_class AS relation
+        JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+        WHERE namespace.nspname = \(object.schema)
+          AND relation.relname = \(object.name);
+        """
+      let definitionRows = try await metadataRows(
+        using: client,
+        query: definitionQuery,
+        stage: .definition
+      )
+      if let row = definitionRows.first {
+        definition = try? Array(row)[0].decode(String.self)
+      }
+    }
+
+    return SchemaObjectDetails(
+      object: object,
+      columns: columns,
+      indexes: indexes,
+      constraints: constraints,
+      definition: definition
+    )
   }
 
   func execute(profileID: UUID, sql: String) async throws -> QueryExecutionResult {
@@ -170,6 +415,28 @@ actor PostgreSQLBackend {
     )
   }
 
+  private func metadataRows(
+    using client: PostgresClient,
+    query: PostgresQuery,
+    stage: SchemaMetadataStage
+  ) async throws -> [PostgresRow] {
+    do {
+      return try await client.query(query).collect()
+    } catch let error as PSQLError {
+      let sqlState = error.serverInfo?[.sqlState]
+      let reason: SchemaMetadataFailureReason
+      switch sqlState {
+      case "42501": reason = .permissionDenied
+      case "42601", "42703", "42883", "0A000": reason = .incompatibleQuery
+      case "57014": reason = .cancelled
+      default: reason = .databaseRejected
+      }
+      throw SchemaMetadataError(stage: stage, reason: reason, sqlState: sqlState)
+    } catch {
+      throw SchemaMetadataError(stage: stage, reason: .databaseRejected, sqlState: nil)
+    }
+  }
+
   private func decodeCell(_ pair: (PostgresCell, PostgresColumn)) -> QueryCellValue {
     let (cell, column) = pair
     guard cell.bytes != nil else { return .null }
@@ -217,6 +484,17 @@ actor PostgreSQLBackend {
     let prefix = buffer.readableBytesView.prefix(64).map { String(format: "%02x", $0) }.joined()
     let suffix = buffer.readableBytes > 64 ? "…" : ""
     return "0x\(prefix)\(suffix)"
+  }
+
+  private static func constraintKind(_ value: String) -> SchemaConstraintKind {
+    switch value {
+    case "p": .primaryKey
+    case "f": .foreignKey
+    case "u": .unique
+    case "c": .check
+    case "x": .exclusion
+    default: .other
+    }
   }
 
   private static func milliseconds(from duration: Duration) -> Int {

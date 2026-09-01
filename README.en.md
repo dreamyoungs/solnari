@@ -36,10 +36,13 @@ Solnari now aims to be:
 
 - Live PostgreSQL, MySQL, and SQLite connection testing and sessions
 - Schema, table, and view discovery with dynamic query execution
-- Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, and existing-resource or relay Kubernetes paths
+- Table and view metadata for columns, defaults, nullability, charset/collation, comments, indexes,
+  and constraints
+- Safely quoted `SELECT` generation, read-only data opening, and qualified-name copying
+- Direct TCP, Google's official Cloud SQL Connector, SSH tunnel, and existing-resource or relay Kubernetes paths
 - ADC-based Cloud SQL automatic IAM authentication, engine-aware user suggestions, and project discovery
 - Saved-connection editing and reconnecting, with confirmation before deletion
-- Sensitive profiles and passwords in device-only macOS Keychain with an opaque local index
+- Local connection definitions and a user-only AES-GCM credential vault
 - Multi-tab SQL editor and resizable editor/result layout
 - AppKit result grid with resizable columns and multi-row selection
 - Copy and export to CSV, TSV, JSON, JSON Lines, Markdown, and SQL `INSERT`
@@ -87,14 +90,16 @@ See the [backend architecture](docs/backend-architecture.md),
 - Production write approval and one-time write capabilities
 - Codex App Server and policy-limited MCP capabilities
 - Developer ID signing, notarization, and GitHub Release automation
-- Table data viewing/editing and broader object exploration
+- Table data editing and broader object exploration
 
 ## Build and run
 
-Requirements: macOS 14 or newer and a Swift 6.1-compatible toolchain.
+Requirements: macOS 14 or newer, a Swift 6.1-compatible toolchain, and Node.js 24 with npm for
+source builds. The built app bundles its Node runtime.
 
-Connection paths may require `cloud-sql-proxy`, OpenSSH, or `kubectl`. Cloud SQL project discovery
-also requires the Google Cloud CLI (`gcloud`) to mint an ADC access token.
+The bundled Node backend uses Google's official Auth Library and Cloud SQL Connector for discovery,
+IAM authentication, and Cloud SQL sessions. Solnari never executes `gcloud` or an external
+`cloud-sql-proxy`. The current SSH and Kubernetes paths still require OpenSSH and `kubectl`.
 
 ```bash
 git clone https://github.com/dreamyoungs/solnari.git
@@ -106,18 +111,22 @@ Build a local Release configuration app:
 
 ```bash
 ./Scripts/build-app.sh release
-open .build/app/release/Solnari.app
 ```
 
-The local bundle uses the [Solnari flower icon](Sources/Solnari/Resources/SolnariIcon.png) and an ad-hoc
-development signature. Public releases will require Developer ID signing and Apple notarization.
-Depending on the selected path, `cloud-sql-proxy`, OpenSSH, or `kubectl` is also required.
+`run-app.sh` installs the development bundle at `~/Applications/Solnari Development.app` before
+launching it, avoiding macOS Documents-folder access prompts caused by running a bundle inside a
+repository. The bundle uses the [Solnari flower icon](Sources/Solnari/Resources/SolnariIcon.png) and
+a certificate-free local development signature. Public releases will require Developer ID signing
+and Apple notarization.
 
 ## Verify
 
 ```bash
 swift format lint --recursive --strict Sources Tests
 swift test
+npm --prefix backend run typecheck
+npm --prefix backend test
+npm --prefix backend audit --audit-level=low
 ./Scripts/build-app.sh release
 git diff --check
 ```
@@ -127,11 +136,12 @@ SQLite and isolated fake-CLI transport tests run by default.
 
 ## Security and privacy
 
-Sensitive connection profiles and database passwords use device-only macOS Keychain items rather
-than `UserDefaults`; the local index contains only opaque UUID ordering. Automatic IAM
-authentication neither requests a database password nor passes one to helper arguments. Helper
-commands use executable and argument arrays, and private connection failures never trigger an
-automatic transport fallback.
+Connection definitions stay in local app storage. Database passwords use a local AES-GCM vault with
+a separate 256-bit key and user-only directory/file permissions. Automatic unlock keeps that key in
+the same macOS user domain, so this protects against plaintext and accidental disclosure but not a
+malicious process already running as the same user. Automatic IAM authentication neither requests
+a database password nor passes one to helper arguments. Helper commands use executable and argument
+arrays, and private connection failures never trigger an automatic transport fallback.
 
 See [SECURITY.md](SECURITY.md) for current limitations and private vulnerability reporting. Never
 put credentials, private endpoints, production SQL, or customer data in a public issue.

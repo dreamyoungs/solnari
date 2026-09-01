@@ -19,18 +19,19 @@ final class WorkspaceModel: ObservableObject {
   @Published private(set) var editingConnectionID: UUID?
   @Published var selectedResultTab = "Results"
   @Published var presentedError: String?
+  @Published var presentedSchemaObject: SchemaObject?
   @Published private(set) var areConnectionOperationsSuspended = false
 
   private let backend: DatabaseBackend
   private let profileStore: ConnectionProfileStore
-  private let passwordStore: KeychainPasswordStore
+  private let passwordStore: LocalEncryptedPasswordStore
   private var activeSuspensionCleanups = 0
   private var resumeRequestedAfterCleanup = false
 
   init(
     backend: DatabaseBackend = DatabaseBackend(),
     profileStore: ConnectionProfileStore = ConnectionProfileStore(),
-    passwordStore: KeychainPasswordStore = KeychainPasswordStore()
+    passwordStore: LocalEncryptedPasswordStore = LocalEncryptedPasswordStore()
   ) {
     self.backend = backend
     self.profileStore = profileStore
@@ -102,6 +103,40 @@ final class WorkspaceModel: ObservableObject {
     let tab = EditorTab(title: "Query \(number)", sql: "SELECT ")
     editorTabs.append(tab)
     selectedTabID = tab.id
+  }
+
+  func presentSchemaObject(_ object: SchemaObject) {
+    presentedSchemaObject = object
+  }
+
+  func dismissSchemaObject() {
+    presentedSchemaObject = nil
+  }
+
+  func loadSchemaObjectDetails(_ object: SchemaObject) async throws -> SchemaObjectDetails {
+    guard let profileID = selectedConnectionID else {
+      throw SolnariDatabaseError.missingConnection
+    }
+    if connections.first(where: { $0.id == profileID })?.status != .connected {
+      await connect(profileID: profileID)
+    }
+    guard connections.first(where: { $0.id == profileID })?.status == .connected else {
+      throw SolnariDatabaseError.notConnected
+    }
+    return try await backend.loadSchemaObjectDetails(profileID: profileID, object: object)
+  }
+
+  func generateSelect(for object: SchemaObject) {
+    guard let engine = selectedConnection?.engine else { return }
+    let sql = SQLObjectQueryBuilder.selectAll(from: object, engine: engine)
+    let tab = EditorTab(title: object.name, sql: sql)
+    editorTabs.append(tab)
+    selectedTabID = tab.id
+  }
+
+  func openData(for object: SchemaObject) async {
+    generateSelect(for: object)
+    await runCurrentQuery()
   }
 
   func closeTab(_ tabID: UUID) {

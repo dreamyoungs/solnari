@@ -37,10 +37,12 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 
 - PostgreSQL, MySQL, SQLite 연결 테스트와 실제 세션 연결
 - 사용자 스키마·테이블·뷰 탐색과 동적 쿼리 실행
-- Direct TCP, Google Cloud SQL Auth Proxy, SSH tunnel, Kubernetes 기존 리소스·임시 relay 경로
+- 테이블·뷰의 컬럼, 기본값, NULL 여부, 문자셋·정렬 규칙, 주석, 인덱스와 제약조건 보기
+- 안전하게 인용한 식별자로 `SELECT` 생성, 읽기 전용 데이터 열기와 정규화된 이름 복사
+- Direct TCP, Google 공식 Cloud SQL Connector, SSH tunnel, Kubernetes 기존 리소스·임시 relay 경로
 - ADC 기반 Cloud SQL 자동 IAM 인증, 엔진별 IAM DB 사용자명 제안, 프로젝트 리소스 조회
 - 저장된 연결의 편집·재연결과 확인 절차가 있는 삭제
-- 민감 연결 profile과 비밀번호의 device-only macOS Keychain 저장, opaque local index
+- 로컬 연결 정의와 AES-GCM으로 암호화한 사용자 전용 credential vault
 - 다중 탭 SQL editor와 크기 조절 가능한 editor/result layout
 - 컬럼 크기 조절과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
 - CSV, TSV, JSON, JSON Lines, Markdown, SQL `INSERT` 복사·내보내기
@@ -97,7 +99,7 @@ Pod 생성·삭제 권한이 추가로 필요합니다.
 - 운영 DML/DDL 승인과 일회성 write capability
 - 실제 Codex App Server 및 정책에 제한된 MCP capability
 - Developer ID 서명, notarization과 GitHub Release 자동 배포
-- 테이블 데이터 보기·수정과 더 넓은 DB 객체 탐색
+- 테이블 데이터 수정과 더 넓은 DB 객체 탐색
 
 진행 중인 항목을 현재 보장처럼 표시하지 않는 것을 프로젝트 문서 원칙으로 삼습니다.
 
@@ -110,9 +112,11 @@ GitHub Release에서 내려받을 수 있는 서명·notarization된 앱은 아�
 
 - macOS 14 이상
 - Swift 6.1 이상 또는 호환되는 Xcode toolchain
+- Node.js 24 이상과 npm(소스 build에만 필요하며 완성된 app에는 runtime을 포함합니다)
 
-선택한 연결 경로에 따라 `cloud-sql-proxy`, OpenSSH 또는 `kubectl`이 필요합니다. Cloud SQL
-프로젝트 리소스 조회에는 ADC access token을 발급하는 Google Cloud CLI(`gcloud`)가 필요합니다.
+Cloud SQL 연결과 리소스 조회는 app에 포함된 Node backend가 Google 공식 Auth Library와
+Cloud SQL Connector로 처리합니다. Solnari는 `gcloud` 또는 외부 `cloud-sql-proxy`를 실행하지
+않습니다. 현재 SSH와 Kubernetes 경로에는 각각 OpenSSH와 `kubectl`이 필요합니다.
 
 ### 빌드하고 실행하기
 
@@ -126,22 +130,25 @@ Release 설정의 로컬 앱을 만들려면 다음을 실행합니다.
 
 ```bash
 ./Scripts/build-app.sh release
-open .build/app/release/Solnari.app
 ```
 
-이 앱은 [솔나리 꽃 아이콘](Sources/Solnari/Resources/SolnariIcon.png)과 로컬 개발용 ad-hoc
-서명을 사용합니다. 공개 Release에는 Developer ID 서명과
-Apple notarization을 별도로 적용할 예정입니다.
+`run-app.sh`는 macOS의 Documents 폴더 접근 요청을 피하도록 빌드된 앱을
+`~/Applications/Solnari Development.app`에 복사해서 실행합니다. 이 앱은
+[솔나리 꽃 아이콘](Sources/Solnari/Resources/SolnariIcon.png)과 인증서 없는 로컬 개발용
+서명을 사용합니다. 공개 Release에는 Developer ID 서명과 Apple notarization을 별도로 적용할
+예정입니다.
 
 빠른 개발 반복에는 `swift run Solnari`도 사용할 수 있습니다. 최초 번들 실행 시 이전
-`swift run`에서 만든 비민감 연결 목록·언어·표시 시간대 설정을 한 번 이관하며, 기존
-Keychain 비밀번호는 같은 opaque profile ID에 연결된 상태로 유지합니다.
+`swift run`에서 만든 비민감 연결 목록·언어·표시 시간대 설정을 한 번 이관합니다.
 
 ## 검증
 
 ```bash
 swift format lint --recursive --strict Sources Tests
 swift test
+npm --prefix backend run typecheck
+npm --prefix backend test
+npm --prefix backend audit --audit-level=low
 ./Scripts/build-app.sh release
 git diff --check
 ```
@@ -152,8 +159,11 @@ SQLite와 격리된 fake CLI transport test는 기본 `swift test`에서 실행�
 
 ## 개인정보와 보안
 
-- 민감 connection profile과 일반 DB 비밀번호는 `UserDefaults`가 아니라 device-only
-  macOS Keychain에 저장하고, local store에는 opaque UUID 순서만 둡니다.
+- 연결 정의는 이 Mac의 로컬 app storage에, 일반 DB 비밀번호는 별도 256-bit key를 사용하는
+  AES-GCM credential vault에 저장합니다. directory와 파일은 현재 macOS 사용자만 읽도록
+  각각 `0700`, `0600` 권한을 적용합니다.
+- 자동 잠금 해제를 위해 암호화 key도 같은 사용자 영역에 보관하므로, 이 방식은 같은 사용자
+  권한을 탈취한 악성 process에 대해 macOS Keychain과 같은 보호를 제공하지 않습니다.
 - 자동 IAM 인증에서는 DB 비밀번호를 요청하거나 helper argument로 전달하지 않습니다.
 - helper command는 shell 문자열이 아닌 executable과 argument 배열로 실행합니다.
 - Codex 대화, SQL, schema와 result는 현재 Solnari가 영속화하거나 telemetry로 보내지 않습니다.

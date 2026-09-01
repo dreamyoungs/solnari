@@ -1,28 +1,31 @@
 # Backend architecture
 
-Solnari separates UI state, non-secret profile persistence, credentials, database engines,
-and network paths. PostgreSQL, MySQL, and SQLite use the same workspace contract while their
-wire protocols and schema queries remain isolated.
+Solnari uses a native SwiftUI frontend and a bundled Node.js core connected over newline-delimited
+JSON-RPC on private stdio. PostgreSQL, MySQL, and SQLite share the same workspace contract while
+their wire protocols and schema queries remain isolated.
 
 ## Components
 
 - `WorkspaceModel` coordinates user actions and publishes UI state on the main actor.
-- `ConnectionProfileStore` keeps only ordered opaque profile UUIDs in `UserDefaults` and migrates
-  legacy plaintext payloads into Keychain.
-- `KeychainConnectionProfileVault` stores versioned sensitive profile payloads, while
-  `KeychainPasswordStore` stores passwords separately; both use non-synchronizing,
-  `WhenUnlockedThisDeviceOnly` generic-password items keyed by profile UUID.
-- `DatabaseBackend` routes workspace operations to the selected engine and coordinates transport cleanup.
-- `PostgreSQLBackend`, `MySQLBackend`, and `SQLiteBackend` own driver sessions, metadata queries,
-  schema discovery, and dynamic result decoding.
-- `ConnectionTransportManager` starts local Cloud SQL Proxy, SSH forwarding, or Kubernetes
-  port-forward processes and tears them down with the database session.
+- `NodeBackendClient` owns one bundled Node process and correlates bounded JSON-RPC requests by ID.
+- `backend/` uses Google Auth Library, the Cloud SQL Node.js Connector, `pg`, and `mysql2` for
+  Cloud SQL discovery, IAM authentication, sessions, metadata, and queries.
+- `ConnectionProfileStore` stores disconnected connection definitions in local app preferences.
+- `LocalEncryptedPasswordStore` encrypts database passwords with AES-GCM using a separate 256-bit
+  local key and restricts its directory and files to the current macOS user.
+- `DatabaseBackend` routes Cloud SQL operations to Node and retains the native adapters during the
+  staged migration of Direct, SSH, Kubernetes, and SQLite paths.
+- `ConnectionTransportManager` currently starts SSH forwarding or Kubernetes port-forward processes
+  and tears them down with the database session.
 - `QuerySafetyPolicy` rejects non-read statements before they reach a read-only session; each
   engine also configures its database connection to reject writes.
 - `QueryTableData` crosses the backend/UI boundary with typed cells and arbitrary columns.
 
 Passwords never appear in `ConnectionProfile`, serialized preferences, diagnostics, or query
 results. Passwords are never passed as helper-process arguments or environment variables.
+The Node child receives a sanitized environment, uses an Application Support working directory,
+and preloads a guard that disables every `node:child_process` execution API. Therefore Google
+library fallbacks cannot launch `gcloud` or any other CLI.
 
 ## Connection lifecycle
 
@@ -32,17 +35,17 @@ Saving a connection follows a fail-closed sequence:
 2. establish the selected network path and connect the selected database engine;
 3. fetch server version, encoding, database, and session time zone;
 4. discover user tables and views;
-5. store the password and sensitive profile payload in separate Keychain items;
-6. persist only the ordered opaque profile index and publish the profile in the sidebar.
+5. encrypt the password in the local credential vault;
+6. persist the disconnected connection definition and publish it in the sidebar.
 
-If any step fails, the live client is cancelled, the Keychain item is removed, and the profile
-is not retained. Profiles loaded after relaunch begin disconnected and reconnect with their
-Keychain credential when selected or when a query is run.
+If any step fails, the live client is cancelled, the provisional encrypted credential is rolled
+back, and the profile is not retained. Profiles loaded after relaunch begin disconnected and
+reconnect with their local encrypted credential when selected or when a query is run.
 
 The application owns one `AppEnvironment` and one `WorkspaceModel` per process. A process lock
 prevents a second launch from owning duplicate database sessions or helper processes; the second
-launch asks the existing app to bring its main window forward. Quit waits for all database clients,
-Cloud SQL Proxy and SSH forwarding processes, and Kubernetes relay cleanup to finish. Screen lock,
+launch asks the existing app to bring its main window forward. Quit waits for the Node core,
+database clients, SSH forwarding processes, and Kubernetes relay cleanup to finish. Screen lock,
 sleep, screen sleep, and user-session deactivation perform the same cleanup and leave profiles
 disconnected after the Mac becomes active again.
 
@@ -103,3 +106,14 @@ swift test --filter MySQLBackendIntegrationTests
 Set `SOLNARI_TEST_MYSQL_TLS=true` when required. The SQLite test creates an isolated temporary
 database. Transport tests use local fake executables to verify arguments, readiness detection,
 process termination, and Kubernetes relay deletion without contacting external infrastructure.
+
+The Node core also has an opt-in, passwordless Cloud SQL integration test. It uses ADC and automatic
+IAM database authentication, sets the session read-only, reads schema metadata, verifies zoned and
+zone-less timestamp types, and closes every session. Configure
+`SOLNARI_TEST_CLOUD_SQL_PROJECT`, `SOLNARI_TEST_CLOUD_SQL_REGION`,
+`SOLNARI_TEST_CLOUD_SQL_INSTANCE`, `SOLNARI_TEST_CLOUD_SQL_DATABASE`,
+`SOLNARI_TEST_CLOUD_SQL_USER`, and `SOLNARI_TEST_CLOUD_SQL_ENGINE`, then run:
+
+```bash
+npm --prefix backend test -- cloud-sql.integration.test.ts
+```

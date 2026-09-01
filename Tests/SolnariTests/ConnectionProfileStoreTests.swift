@@ -9,10 +9,7 @@ struct ConnectionProfileStoreTests {
     let suiteName = "SolnariTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
-    let store = ConnectionProfileStore(
-      defaults: defaults,
-      vault: InMemoryConnectionProfileVault()
-    )
+    let store = ConnectionProfileStore(defaults: defaults)
     let profile = ConnectionProfile(
       name: "민석의 개발 DB",
       database: "solnari_test",
@@ -182,12 +179,11 @@ struct ConnectionProfileStoreTests {
     #expect(configuration.effectiveConnectionMode == .temporaryRelay)
   }
 
-  @Test("기존 평문 profile payload를 Keychain vault와 opaque index로 이관한다")
-  func legacyPayloadMigratesToVault() throws {
+  @Test("기존 로컬 profile payload를 현재 local connection definition으로 이관한다")
+  func legacyLocalProfileMigrates() throws {
     let suiteName = "SolnariTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suiteName))
     defer { defaults.removePersistentDomain(forName: suiteName) }
-    let vault = InMemoryConnectionProfileVault()
     let profile = ConnectionProfile(
       name: "Private database",
       database: "orders",
@@ -203,30 +199,12 @@ struct ConnectionProfileStoreTests {
       try JSONEncoder().encode([profile]),
       forKey: "solnari.connectionProfiles.v1"
     )
-    let store = ConnectionProfileStore(defaults: defaults, vault: vault)
-
+    let store = ConnectionProfileStore(defaults: defaults)
     let loaded = try store.load()
 
     #expect(loaded.map(\.id) == [profile.id])
-    #expect(try vault.profile(for: profile.id)?.host == "database.private")
     #expect(defaults.data(forKey: "solnari.connectionProfiles.v1") == nil)
-    let indexData = try #require(defaults.data(forKey: "solnari.connectionProfileIndex.v2"))
-    #expect(!String(decoding: indexData, as: UTF8.self).contains("database.private"))
-  }
-}
-
-private final class InMemoryConnectionProfileVault: ConnectionProfileVault {
-  private var profiles: [UUID: ConnectionProfile] = [:]
-
-  func save(_ profile: ConnectionProfile) throws {
-    profiles[profile.id] = profile.persisted()
-  }
-
-  func profile(for profileID: UUID) throws -> ConnectionProfile? {
-    profiles[profileID]
-  }
-
-  func delete(profileID: UUID) throws {
-    profiles.removeValue(forKey: profileID)
+    let localData = try #require(defaults.data(forKey: "solnari.connectionProfiles.v3"))
+    #expect(String(decoding: localData, as: UTF8.self).contains("database.private"))
   }
 }

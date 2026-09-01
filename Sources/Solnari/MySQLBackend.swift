@@ -7,6 +7,23 @@ import NIOSSL
 actor MySQLBackend {
   private var sessions: [UUID: MySQLConnection] = [:]
 
+  private struct IndexAccumulator {
+    let name: String
+    let isUnique: Bool
+    let isPrimary: Bool
+    let method: String?
+    var columns: [String]
+  }
+
+  private struct ConstraintAccumulator {
+    let name: String
+    let kind: SchemaConstraintKind
+    let referencedSchema: String?
+    let referencedTable: String?
+    var columns: [String]
+    var referencedColumns: [String]
+  }
+
   deinit {
     for connection in sessions.values {
       connection.close().whenFailure { _ in }
@@ -77,6 +94,167 @@ actor MySQLBackend {
         columnCount: count
       )
     }
+  }
+
+  func loadSchemaObjectDetails(profileID: UUID, object: SchemaObject) async throws
+    -> SchemaObjectDetails
+  {
+    guard let connection = sessions[profileID] else {
+      throw SolnariDatabaseError.notConnected
+    }
+    let binds = [MySQLData(string: object.schema), MySQLData(string: object.name)]
+    let columnRows = try await connection.query(
+      """
+      SELECT
+        ordinal_position,
+        column_name,
+        column_type,
+        is_nullable,
+        column_default,
+        character_set_name,
+        collation_name,
+        column_comment,
+        column_key
+      FROM information_schema.columns
+      WHERE table_schema = ? AND table_name = ?
+      ORDER BY ordinal_position
+      """,
+      binds
+    ).get()
+    let columns = columnRows.compactMap { row -> SchemaColumn? in
+      guard let ordinal = row.column("ordinal_position")?.int,
+        let name = row.column("column_name")?.string,
+        let dataType = row.column("column_type")?.string,
+        let nullable = row.column("is_nullable")?.string
+      else { return nil }
+      return SchemaColumn(
+        ordinalPosition: ordinal,
+        name: name,
+        dataType: dataType,
+        isNullable: nullable == "YES",
+        defaultValue: row.column("column_default")?.string,
+        characterSet: row.column("character_set_name")?.string,
+        collation: row.column("collation_name")?.string,
+        comment: row.column("column_comment")?.string,
+        isPrimaryKey: row.column("column_key")?.string == "PRI"
+      )
+    }
+
+    let indexRows = try await connection.query(
+      """
+      SELECT index_name, non_unique, index_type, column_name
+      FROM information_schema.statistics
+      WHERE table_schema = ? AND table_name = ?
+      ORDER BY index_name, seq_in_index
+      """,
+      binds
+    ).get()
+    var indexOrder: [String] = []
+    var indexAccumulators: [String: IndexAccumulator] = [:]
+    for row in indexRows {
+      guard let name = row.column("index_name")?.string else { continue }
+      if indexAccumulators[name] == nil {
+        indexOrder.append(name)
+        indexAccumulators[name] = IndexAccumulator(
+          name: name,
+          isUnique: row.column("non_unique")?.int == 0,
+          isPrimary: name == "PRIMARY",
+          method: row.column("index_type")?.string,
+          columns: []
+        )
+      }
+      if let column = row.column("column_name")?.string {
+        indexAccumulators[name]?.columns.append(column)
+      }
+    }
+    let indexes = indexOrder.compactMap { name -> SchemaIndex? in
+      guard let index = indexAccumulators[name] else { return nil }
+      return SchemaIndex(
+        name: index.name,
+        columns: index.columns,
+        isUnique: index.isUnique,
+        isPrimary: index.isPrimary,
+        method: index.method
+      )
+    }
+
+    let constraintRows = try await connection.query(
+      """
+      SELECT
+        table_constraint.constraint_name,
+        table_constraint.constraint_type,
+        key_column.column_name,
+        key_column.referenced_table_schema,
+        key_column.referenced_table_name,
+        key_column.referenced_column_name
+      FROM information_schema.table_constraints AS table_constraint
+      LEFT JOIN information_schema.key_column_usage AS key_column
+        ON key_column.constraint_schema = table_constraint.constraint_schema
+        AND key_column.table_schema = table_constraint.table_schema
+        AND key_column.table_name = table_constraint.table_name
+        AND key_column.constraint_name = table_constraint.constraint_name
+      WHERE table_constraint.table_schema = ? AND table_constraint.table_name = ?
+      ORDER BY table_constraint.constraint_name, key_column.ordinal_position
+      """,
+      binds
+    ).get()
+    var constraintOrder: [String] = []
+    var constraintAccumulators: [String: ConstraintAccumulator] = [:]
+    for row in constraintRows {
+      guard let name = row.column("constraint_name")?.string,
+        let type = row.column("constraint_type")?.string
+      else { continue }
+      if constraintAccumulators[name] == nil {
+        constraintOrder.append(name)
+        constraintAccumulators[name] = ConstraintAccumulator(
+          name: name,
+          kind: Self.constraintKind(type),
+          referencedSchema: row.column("referenced_table_schema")?.string,
+          referencedTable: row.column("referenced_table_name")?.string,
+          columns: [],
+          referencedColumns: []
+        )
+      }
+      if let column = row.column("column_name")?.string {
+        constraintAccumulators[name]?.columns.append(column)
+      }
+      if let referencedColumn = row.column("referenced_column_name")?.string {
+        constraintAccumulators[name]?.referencedColumns.append(referencedColumn)
+      }
+    }
+    let constraints = constraintOrder.compactMap { name -> SchemaConstraint? in
+      guard let constraint = constraintAccumulators[name] else { return nil }
+      return SchemaConstraint(
+        name: constraint.name,
+        kind: constraint.kind,
+        columns: constraint.columns,
+        referencedSchema: constraint.referencedSchema,
+        referencedTable: constraint.referencedTable,
+        referencedColumns: constraint.referencedColumns,
+        definition: nil
+      )
+    }
+
+    var definition: String?
+    if object.kind == .view {
+      let rows = try await connection.query(
+        """
+        SELECT view_definition
+        FROM information_schema.views
+        WHERE table_schema = ? AND table_name = ?
+        """,
+        binds
+      ).get()
+      definition = rows.first?.column("view_definition")?.string
+    }
+
+    return SchemaObjectDetails(
+      object: object,
+      columns: columns,
+      indexes: indexes,
+      constraints: constraints,
+      definition: definition
+    )
   }
 
   func execute(profileID: UUID, sql: String) async throws -> QueryExecutionResult {
@@ -201,5 +379,15 @@ actor MySQLBackend {
     }
     return data.string.map(QueryCellValue.text)
       ?? .binary(byteCount: data.buffer?.readableBytes ?? 0)
+  }
+
+  private static func constraintKind(_ value: String) -> SchemaConstraintKind {
+    switch value {
+    case "PRIMARY KEY": .primaryKey
+    case "FOREIGN KEY": .foreignKey
+    case "UNIQUE": .unique
+    case "CHECK": .check
+    default: .other
+    }
   }
 }

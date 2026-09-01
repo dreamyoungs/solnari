@@ -25,12 +25,13 @@ credential·token·private hostname·project/cluster/database 식별자·운영 
 
 ## 현재 구현된 경계
 
-- 일반 database password는 macOS Keychain generic-password item에 저장합니다.
-- 민감한 connection profile payload는 iCloud 동기화를 끈
-  `WhenUnlockedThisDeviceOnly` Keychain item에 저장합니다.
+- connection profile은 이 Mac의 local app storage에 저장합니다.
+- 일반 database password는 별도 256-bit key를 사용하는 AES-GCM local credential vault에
+  저장하고 directory/file 권한을 각각 `0700`과 `0600`으로 제한합니다.
 - credential을 helper process argument로 전달하지 않습니다.
 - Cloud SQL 자동 IAM 인증에서는 database password를 저장하거나 전달하지 않습니다.
-- Cloud SQL Proxy, SSH와 Kubernetes port-forward는 임의 loopback port를 사용합니다.
+- Cloud SQL은 외부 Proxy 없이 공식 Connector의 TLS socket을 사용합니다. SSH와 Kubernetes
+  port-forward는 임의 loopback port만 사용합니다.
 - 연결 transport를 사용자가 명시적으로 선택하며 실패 시 다른 경로로 자동 fallback하지 않습니다.
 - 앱 종료·화면 잠금·절전·사용자 session 전환 시 열린 DB session과 helper process를 정리합니다.
 - 읽기 전용 profile은 보수적인 SQL 사전 검사와 database별 session 쓰기 차단을 함께 적용합니다.
@@ -44,8 +45,11 @@ credential·token·private hostname·project/cluster/database 식별자·운영 
   아직 완성되지 않았습니다.
 - 현재 SQL 사전 검사는 의도적으로 보수적인 lexer이며 완전한 dialect parser가 아닙니다.
   공통 query timeout/cancel과 production write approval은 아직 강제되지 않습니다.
-- app은 개발용 ad-hoc 서명을 사용하며 아직 Developer ID notarization 배포물이 아닙니다.
-  Data Protection Keychain 전환도 필요한 signing entitlement와 함께 배포 단계에서 적용합니다.
+- local credential vault의 encryption key도 자동 잠금 해제를 위해 같은 사용자 영역에
+  저장됩니다. 따라서 같은 macOS 사용자 권한으로 실행되는 악성 process로부터 key를
+  보호하지는 못합니다.
+- 로컬 build는 인증서 없는 개발 서명을 사용하며 배포 신뢰를 제공하지 않습니다. 아직
+  Developer ID notarization 배포물이 아닙니다.
 
 ## 공개 저장소 원칙
 

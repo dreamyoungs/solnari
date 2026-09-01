@@ -1,53 +1,41 @@
-import Foundation
 import Testing
 
 @testable import Solnari
 
 struct GoogleCloudSQLDiscoveryServiceTests {
-  @Test("프로젝트 instance 목록에서 engine과 region을 안전하게 해석한다")
-  func instancesDecodeWithoutPuttingTheTokenInTheURL() async throws {
-    let recorder = RequestRecorder()
-    let responseData = Data(
-      """
-      {
-        "items": [
-          {"name":"orders","region":"asia-northeast3","databaseVersion":"POSTGRES_17","state":"RUNNABLE"},
-          {"name":"catalog","region":"us-central1","databaseVersion":"MYSQL_8_0","state":"RUNNABLE"},
-          {"name":"ignored","region":"us-central1","databaseVersion":"SQLSERVER_2022_STANDARD","state":"RUNNABLE"}
-        ]
-      }
-      """.utf8
-    )
+  @Test("Node backend가 반환한 Cloud SQL instance 목록을 그대로 전달한다")
+  func instancesLoadThroughNodeBoundary() async throws {
+    let requestedProjects = Recorder<String>()
     let service = GoogleCloudSQLDiscoveryService(
-      tokenLoader: { "secret-access-token" },
-      dataLoader: { request in
-        await recorder.record(request)
-        return (responseData, Self.response(for: request, statusCode: 200))
-      }
+      instanceLoader: { project in
+        await requestedProjects.record(project)
+        return [
+          CloudSQLInstanceSummary(
+            name: "orders",
+            region: "asia-northeast3",
+            engine: .postgresql,
+            state: "RUNNABLE"
+          )
+        ]
+      },
+      databaseLoader: { _, _ in [] }
     )
 
-    let instances = try await service.instances(project: "sample-project")
-    let request = try #require(await recorder.lastRequest)
+    let instances = try await service.instances(project: "Sample-Project")
 
-    #expect(instances.map(\.name) == ["catalog", "orders"])
-    #expect(instances.first(where: { $0.name == "orders" })?.engine == .postgresql)
-    #expect(instances.first(where: { $0.name == "orders" })?.region == "asia-northeast3")
-    #expect(request.url?.absoluteString.contains("secret-access-token") == false)
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer secret-access-token")
-    #expect(request.value(forHTTPHeaderField: "X-Goog-User-Project") == "sample-project")
+    #expect(await requestedProjects.lastValue == "sample-project")
+    #expect(instances.map(\.name) == ["orders"])
+    #expect(instances.first?.engine == .postgresql)
   }
 
-  @Test("선택한 instance의 database 이름을 정렬해 반환한다")
-  func databasesAreSorted() async throws {
-    let responseData = Data(
-      """
-      {"items":[{"name":"postgres"},{"name":"app"},{"name":"analytics"}]}
-      """.utf8
-    )
+  @Test("선택한 instance의 database 목록은 Node backend에서 불러온다")
+  func databasesLoadThroughNodeBoundary() async throws {
+    let requestedValues = Recorder<[String]>()
     let service = GoogleCloudSQLDiscoveryService(
-      tokenLoader: { "token" },
-      dataLoader: { request in
-        (responseData, Self.response(for: request, statusCode: 200))
+      instanceLoader: { _ in [] },
+      databaseLoader: { project, instance in
+        await requestedValues.record([project, instance])
+        return ["analytics", "app", "postgres"]
       }
     )
 
@@ -56,40 +44,52 @@ struct GoogleCloudSQLDiscoveryServiceTests {
       instance: "primary"
     )
 
+    #expect(await requestedValues.lastValue == ["sample-project", "primary"])
     #expect(databases == ["analytics", "app", "postgres"])
   }
 
-  @Test("권한 없음과 잘못된 project ID를 fail closed로 구분한다")
-  func failuresAreFailClosed() async {
+  @Test("잘못된 project와 instance identifier는 Node로 보내지 않는다")
+  func identifiersAreValidatedBeforeNodeRequest() async {
     let service = GoogleCloudSQLDiscoveryService(
-      tokenLoader: { "token" },
-      dataLoader: { request in
-        (Data(), Self.response(for: request, statusCode: 403))
-      }
+      instanceLoader: { _ in [] },
+      databaseLoader: { _, _ in [] }
     )
 
     await #expect(throws: CloudSQLDiscoveryError.self) {
-      try await service.instances(project: "sample-project")
+      try await service.instances(project: "not valid")
     }
     await #expect(throws: CloudSQLDiscoveryError.self) {
-      try await service.instances(project: "not valid")
+      try await service.databases(project: "sample-project", instance: "../../unsafe")
+    }
+    await #expect(throws: CloudSQLDiscoveryError.self) {
+      try await service.users(project: "sample-project", instance: "../../unsafe")
     }
   }
 
-  private static func response(for request: URLRequest, statusCode: Int) -> HTTPURLResponse {
-    HTTPURLResponse(
-      url: request.url!,
-      statusCode: statusCode,
-      httpVersion: "HTTP/1.1",
-      headerFields: ["Content-Type": "application/json"]
-    )!
+  @Test("IAM database user 후보도 Node backend에서 불러온다")
+  func usersLoadThroughNodeBoundary() async throws {
+    let requestedValues = Recorder<[String]>()
+    let service = GoogleCloudSQLDiscoveryService(
+      instanceLoader: { _ in [] },
+      databaseLoader: { _, _ in [] },
+      userLoader: { project, instance in
+        await requestedValues.record([project, instance])
+        return [CloudSQLUserSummary(name: "developer@example.com", type: "CLOUD_IAM_USER")]
+      }
+    )
+
+    let users = try await service.users(project: "sample-project", instance: "primary")
+
+    #expect(await requestedValues.lastValue == ["sample-project", "primary"])
+    #expect(users.map(\.name) == ["developer@example.com"])
+    #expect(users.allSatisfy { $0.isIAMUser })
   }
 }
 
-private actor RequestRecorder {
-  private(set) var lastRequest: URLRequest?
+private actor Recorder<Value: Sendable> {
+  private(set) var lastValue: Value?
 
-  func record(_ request: URLRequest) {
-    lastRequest = request
+  func record(_ value: Value) {
+    lastValue = value
   }
 }

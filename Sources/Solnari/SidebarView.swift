@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SidebarView: View {
@@ -6,8 +7,8 @@ struct SidebarView: View {
   @Environment(\.openSettings) private var openSettings
   @State private var searchText = ""
   @State private var schemasExpanded = true
-  @State private var tablesExpanded = true
-  @State private var viewsExpanded = true
+  @State private var schemaExpansion: [String: Bool] = [:]
+  @State private var objectGroupExpansion: [String: Bool] = [:]
   @State private var connectionPendingRemoval: ConnectionProfile?
 
   private var filteredConnections: [ConnectionProfile] {
@@ -86,7 +87,7 @@ struct SidebarView: View {
     } message: { connection in
       Text(
         String(
-          format: settings.text("Remove “%@” and its saved Keychain credentials?"),
+          format: settings.text("Remove “%@” and its saved local credentials?"),
           connection.name
         )
       )
@@ -133,27 +134,14 @@ struct SidebarView: View {
   @ViewBuilder
   private func databaseTree(_ connection: ConnectionProfile) -> some View {
     DisclosureGroup(isExpanded: $schemasExpanded) {
-      DisclosureGroup(isExpanded: $tablesExpanded) {
-        ForEach(model.schemaObjects.filter { $0.kind == .table }) { object in
-          SchemaObjectRow(object: object)
+      if schemaNames.isEmpty {
+        Text(settings.text("No schema objects"))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(schemaNames, id: \.self) { schema in
+          schemaTree(schema)
         }
-      } label: {
-        treeLabel(
-          "Tables", symbol: "tablecells",
-          count: model.schemaObjects.filter { $0.kind == .table }.count)
-      }
-
-      DisclosureGroup(isExpanded: $viewsExpanded) {
-        ForEach(
-          model.schemaObjects.filter { $0.kind == .view || $0.kind == .materializedView }
-        ) { object in
-          SchemaObjectRow(object: object)
-        }
-      } label: {
-        treeLabel(
-          "Views", symbol: "eye",
-          count: model.schemaObjects.filter { $0.kind == .view || $0.kind == .materializedView }
-            .count)
       }
     } label: {
       HStack(spacing: 7) {
@@ -174,12 +162,77 @@ struct SidebarView: View {
     }
   }
 
-  private func treeLabel(_ title: String, symbol: String, count: Int) -> some View {
+  private var schemaNames: [String] {
+    Array(Set(model.schemaObjects.map(\.schema))).sorted {
+      $0.localizedStandardCompare($1) == .orderedAscending
+    }
+  }
+
+  private func schemaTree(_ schema: String) -> some View {
+    let objects = model.schemaObjects.filter { $0.schema == schema }
+    let tables = objects.filter { $0.kind == .table }
+    let views = objects.filter { $0.kind == .view || $0.kind == .materializedView }
+    return DisclosureGroup(
+      isExpanded: expansionBinding(
+        key: schema,
+        storage: $schemaExpansion,
+        defaultValue: schema == "public" || schema == "main" || schemaNames.count == 1
+      )
+    ) {
+      if !tables.isEmpty {
+        objectGroup("Tables", symbol: "tablecells", schema: schema, objects: tables)
+      }
+      if !views.isEmpty {
+        objectGroup("Views", symbol: "eye", schema: schema, objects: views)
+      }
+    } label: {
+      treeLabel(schema, symbol: "square.3.layers.3d", count: objects.count, localize: false)
+    }
+  }
+
+  private func objectGroup(
+    _ title: String,
+    symbol: String,
+    schema: String,
+    objects: [SchemaObject]
+  ) -> some View {
+    DisclosureGroup(
+      isExpanded: expansionBinding(
+        key: "\(schema).\(title)",
+        storage: $objectGroupExpansion,
+        defaultValue: true
+      )
+    ) {
+      ForEach(objects) { object in
+        SchemaObjectRow(object: object)
+      }
+    } label: {
+      treeLabel(title, symbol: symbol, count: objects.count)
+    }
+  }
+
+  private func expansionBinding(
+    key: String,
+    storage: Binding<[String: Bool]>,
+    defaultValue: Bool
+  ) -> Binding<Bool> {
+    Binding(
+      get: { storage.wrappedValue[key] ?? defaultValue },
+      set: { storage.wrappedValue[key] = $0 }
+    )
+  }
+
+  private func treeLabel(
+    _ title: String,
+    symbol: String,
+    count: Int,
+    localize: Bool = true
+  ) -> some View {
     HStack(spacing: 7) {
       Image(systemName: symbol)
         .foregroundStyle(.secondary)
         .frame(width: 15)
-      Text(settings.text(title))
+      Text(localize ? settings.text(title) : title)
       Spacer()
       Text("\(count)")
         .font(.caption2)
@@ -267,26 +320,44 @@ private struct ConnectionRow: View {
 }
 
 private struct SchemaObjectRow: View {
+  @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
   let object: SchemaObject
 
   var body: some View {
-    HStack(spacing: 7) {
-      Image(systemName: object.kind.symbol)
-        .font(.caption)
-        .foregroundStyle(object.kind == .view ? SolnariTheme.orange : .secondary)
-        .frame(width: 15)
-      Text(object.schema == "public" ? object.name : object.qualifiedName)
-        .font(.system(size: 12))
-      Spacer()
-      Text(localizedMetadata)
-        .font(.system(size: 9))
-        .foregroundStyle(.tertiary)
+    Button {
+      model.presentSchemaObject(object)
+    } label: {
+      HStack(spacing: 7) {
+        Image(systemName: object.kind.symbol)
+          .font(.caption)
+          .foregroundStyle(object.kind == .view ? SolnariTheme.orange : .secondary)
+          .frame(width: 15)
+        Text(object.name)
+          .font(.system(size: 12))
+        Spacer()
+        Text(localizedMetadata)
+          .font(.system(size: 9))
+          .foregroundStyle(.tertiary)
+      }
+      .contentShape(Rectangle())
     }
+    .buttonStyle(.plain)
     .contextMenu {
-      Button(settings.text("Open data")) {}
-      Button(settings.text("Copy qualified name")) {}
-      Button(settings.text("Generate SELECT")) {}
+      Button(settings.text("View structure")) {
+        model.presentSchemaObject(object)
+      }
+      Button(settings.text("Open data")) {
+        Task { await model.openData(for: object) }
+      }
+      Divider()
+      Button(settings.text("Copy qualified name")) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(object.qualifiedName, forType: .string)
+      }
+      Button(settings.text("Generate SELECT")) {
+        model.generateSelect(for: object)
+      }
     }
   }
 

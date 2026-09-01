@@ -5,7 +5,7 @@ import Testing
 @testable import Solnari
 
 struct ConnectionTransportManagerTests {
-  @Test("가짜 CLI로 Cloud SQL, SSH, Kubernetes 경로의 시작과 정리를 검증한다")
+  @Test("가짜 CLI로 SSH와 Kubernetes 경로의 시작과 정리를 검증한다")
   func allTransportProcessesStartAndStop() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("SolnariTransportTests-\(UUID().uuidString)", isDirectory: true)
@@ -17,21 +17,9 @@ struct ConnectionTransportManagerTests {
 
     let manager = ConnectionTransportManager(
       executables: TransportExecutables(
-        cloudSQLProxy: executable.path,
         ssh: executable.path,
         kubectl: executable.path
       ))
-
-    let cloud = profile(
-      transport: .cloudSQL,
-      cloudSQL: CloudSQLConfiguration(
-        project: "project", region: "region", instance: "instance",
-        useIAMAuthentication: true
-      )
-    )
-    let cloudEndpoint = try await manager.open(profile: cloud)
-    #expect(cloudEndpoint.host == "127.0.0.1")
-    await manager.close(profileID: cloud.id)
 
     let ssh = profile(
       transport: .ssh,
@@ -64,7 +52,6 @@ struct ConnectionTransportManagerTests {
 
     let logURL = URL(fileURLWithPath: executable.path + ".log")
     let log = try String(contentsOf: logURL, encoding: .utf8)
-    #expect(log.contains("--auto-iam-authn"))
     #expect(log.contains("ubuntu@bastion"))
     #expect(log.contains("delete pod/solnari-relay-"))
     #expect(log.contains("port-forward service/admin-db-proxy"))
