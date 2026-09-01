@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^26.4.0",
     "@types/pg": "^8.15.6",
     "esbuild": "^0.28.2",
     "prettier": "3.9.6",
