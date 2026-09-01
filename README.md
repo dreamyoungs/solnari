@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/solnari-workspace.png" alt="솔나리의 연결 탐색기, SQL 편집기, 결과 그리드와 Codex 패널" width="1200">
+  <img src="docs/images/solnari-overview-v2.png" alt="솔나리의 시작 workspace와 새 데이터베이스 연결 화면" width="1200">
 </p>
 
 > [!NOTE]
