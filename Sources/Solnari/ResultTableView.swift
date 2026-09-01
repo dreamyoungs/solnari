@@ -40,6 +40,9 @@ struct ResultTableView: NSViewRepresentable {
     headerView.onColumnResize = { [weak coordinator = context.coordinator] in
       coordinator?.captureColumnWidths()
     }
+    headerView.onColumnAutoFit = { [weak coordinator = context.coordinator] column in
+      coordinator?.fitColumnToContent(column)
+    }
     return scrollView
   }
 
@@ -138,6 +141,24 @@ struct ResultTableView: NSViewRepresentable {
       parent.columnWidths = widths
     }
 
+    func fitColumnToContent(_ column: NSTableColumn) {
+      guard let tableView,
+        let columnIndex = tableView.tableColumns.firstIndex(of: column),
+        parent.table.columns.indices.contains(columnIndex)
+      else { return }
+
+      let values = parent.table.rows.compactMap { row in
+        row.indices.contains(columnIndex) ? row[columnIndex] : nil
+      }
+      column.width = ResultColumnWidthCalculator.fittedWidth(
+        title: parent.table.columns[columnIndex],
+        values: values,
+        displayTimeZone: parent.displayTimeZone
+      )
+      tableView.tile()
+      captureColumnWidths()
+    }
+
     private func isNumeric(_ value: QueryCellValue) -> Bool {
       switch value {
       case .integer, .decimal: true
@@ -170,6 +191,7 @@ struct ResultTableView: NSViewRepresentable {
 private final class WideResizeTableHeaderView: NSTableHeaderView {
   var additionalHitWidth: CGFloat = 3
   var onColumnResize: (() -> Void)?
+  var onColumnAutoFit: ((NSTableColumn) -> Void)?
 
   private weak var resizingColumn: NSTableColumn?
   private var dragStartX: CGFloat = 0
@@ -234,6 +256,15 @@ private final class WideResizeTableHeaderView: NSTableHeaderView {
     let location = convert(event.locationInWindow, from: nil)
     guard let divider = dividerNear(x: location.x) else {
       super.mouseDown(with: event)
+      return
+    }
+
+    if event.clickCount == 2 {
+      resizingColumn = nil
+      hoveredDividerX = divider.x
+      onColumnAutoFit?(divider.column)
+      window?.invalidateCursorRects(for: self)
+      needsDisplay = true
       return
     }
 
@@ -302,5 +333,41 @@ private final class WideResizeTableHeaderView: NSTableHeaderView {
       }
     }
     return nil
+  }
+}
+
+@MainActor
+enum ResultColumnWidthCalculator {
+  static let minimumWidth: CGFloat = 64
+  static let maximumWidth: CGFloat = 360
+  private static let horizontalPadding: CGFloat = 32
+
+  static func fittedWidth(
+    title: String,
+    values: [QueryCellValue],
+    displayTimeZone: TimeZone
+  ) -> CGFloat {
+    let headerFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    var widest = textWidth(title, font: headerFont)
+
+    for value in values {
+      let font =
+        isNumeric(value)
+        ? NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        : NSFont.systemFont(ofSize: 11)
+      widest = max(widest, textWidth(value.displayValue(in: displayTimeZone), font: font))
+    }
+    return min(maximumWidth, max(minimumWidth, widest + horizontalPadding))
+  }
+
+  private static func textWidth(_ text: String, font: NSFont) -> CGFloat {
+    (text as NSString).size(withAttributes: [.font: font]).width
+  }
+
+  private static func isNumeric(_ value: QueryCellValue) -> Bool {
+    switch value {
+    case .integer, .decimal: true
+    default: false
+    }
   }
 }

@@ -393,8 +393,7 @@ private struct ResultsPane: View {
     model.queryTable.columns.enumerated().map { index, title in
       ResultColumn(
         id: "column-\(index)",
-        initialWidth: min(280, max(100, CGFloat(title.count * 8 + 36))),
-        minimumWidth: 64
+        initialWidth: min(280, max(100, CGFloat(title.count * 8 + 36)))
       )
     }
   }
@@ -612,18 +611,17 @@ private struct ResultsPane: View {
 
   private func fitColumnsToContent() {
     let table = model.queryTable
-    let font = NSFont.systemFont(ofSize: 11)
     var fitted: [String: CGFloat] = [:]
 
     for (index, column) in columns.enumerated() {
-      let values = table.rows.compactMap { row in
-        row.indices.contains(index) ? row[index].displayValue(in: settings.displayTimeZone) : nil
+      let values: [QueryCellValue] = table.rows.compactMap { row in
+        row.indices.contains(index) ? row[index] : nil
       }
-      let longestWidth =
-        ([table.columns[index]] + values)
-        .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
-        .max() ?? column.initialWidth
-      fitted[column.id] = min(360, max(column.minimumWidth, longestWidth + 32))
+      fitted[column.id] = ResultColumnWidthCalculator.fittedWidth(
+        title: table.columns[index],
+        values: values,
+        displayTimeZone: settings.displayTimeZone
+      )
     }
 
     withAnimation(.easeOut(duration: 0.16)) {
@@ -644,5 +642,4 @@ private struct ResultsPane: View {
 private struct ResultColumn: Identifiable {
   let id: String
   let initialWidth: CGFloat
-  let minimumWidth: CGFloat
 }
