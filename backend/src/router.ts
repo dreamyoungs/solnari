@@ -25,6 +25,8 @@ export class Router {
         return this.googleCloud.users(request.params);
       case "cloudSql.testConnection":
         return this.databaseSessions.testConnection(request.params);
+      case "cloudSql.cancelTestConnection":
+        return this.databaseSessions.cancelTestConnection(request.params);
       case "database.connect":
         return this.databaseSessions.connect(request.params);
       case "database.disconnect":

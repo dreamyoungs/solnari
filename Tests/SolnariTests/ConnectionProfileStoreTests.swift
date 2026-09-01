@@ -52,6 +52,7 @@ struct ConnectionProfileStoreTests {
   func draftValidatesEveryEngineAndTransport() throws {
     var draft = ConnectionDraft()
     draft.name = "Local"
+    draft.database = "solnari"
     draft.host = "localhost"
     draft.user = "postgres"
     draft.port = "70000"
@@ -99,6 +100,37 @@ struct ConnectionProfileStoreTests {
     #expect(!draft.isValid)
     draft.requiresTLS = true
     #expect(draft.isValid)
+  }
+
+  @Test("연결 테스트와 저장은 필요한 입력을 구분하고 구체적인 오류를 제공한다")
+  func draftSeparatesTestAndSaveValidation() throws {
+    var draft = ConnectionDraft()
+    #expect(draft.testValidationIssues.first == .database)
+    #expect(!draft.canTestConnection)
+    #expect(!draft.canSaveConnection)
+
+    draft.database = "solnari"
+    draft.user = "postgres"
+    #expect(draft.canTestConnection)
+    #expect(!draft.canSaveConnection)
+    #expect(draft.saveValidationIssues.first == .connectionName)
+    #expect(try draft.makeTestProfile().name == "Connection test")
+
+    draft.name = "Local"
+    #expect(draft.canSaveConnection)
+
+    draft.transport = .cloudSQL
+    draft.cloudProject = "bad_project"
+    draft.cloudRegion = "asia"
+    draft.cloudInstance = ""
+    #expect(
+      draft.testValidationIssues == [.cloudProject, .cloudRegion, .cloudInstance]
+    )
+
+    draft.cloudProject = "cloud-turing-2025-07-07"
+    draft.cloudRegion = "asia-northeast3"
+    draft.cloudInstance = "primary"
+    #expect(draft.canTestConnection)
   }
 
   @Test("저장된 Cloud SQL 프로필은 비밀정보 없이 편집 초안으로 복원된다")

@@ -169,7 +169,7 @@ final class WorkspaceModel: ObservableObject {
     replacing profileID: UUID? = nil
   ) async throws -> ConnectionMetadata {
     guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
-    let profile = try draft.makeProfile()
+    let profile = try draft.makeTestProfile()
     let password = try resolvedPassword(for: draft, replacing: profileID)
     return try await backend.testConnection(profile: profile, password: password)
   }

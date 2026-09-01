@@ -49,6 +49,11 @@ type MySQLSession = {
 };
 
 type Session = PostgresSession | MySQLSession;
+type ConnectionTestAttempt = {
+  cancelled: boolean;
+  connector?: Connector;
+  closeDatabase?: () => Promise<unknown>;
+};
 const maximumResultRows = 10_000;
 const maximumResultColumns = 1_000;
 const maximumCellBytes = 1_048_576;
@@ -60,12 +65,38 @@ for (const type of [20, 1082, 1114, 1700]) {
 
 export class DatabaseSessions {
   private readonly sessions = new Map<string, Session>();
+  private readonly connectionTests = new Map<string, ConnectionTestAttempt>();
 
   async testConnection(raw: unknown): Promise<unknown> {
     const input = connectionSchema.parse(raw);
-    const { session, metadata } = await this.open(input);
-    await closeSession(session);
-    return metadata;
+    await this.cancelTestConnection({ profileID: input.profileID });
+    const attempt: ConnectionTestAttempt = { cancelled: false };
+    this.connectionTests.set(input.profileID, attempt);
+    try {
+      const { session, metadata } = await this.open(input, attempt);
+      await closeSession(session);
+      if (attempt.cancelled) throw connectionTestCancelled();
+      return metadata;
+    } finally {
+      if (this.connectionTests.get(input.profileID) === attempt) {
+        this.connectionTests.delete(input.profileID);
+      }
+    }
+  }
+
+  async cancelTestConnection(raw: unknown): Promise<{ disconnected: true }> {
+    const { profileID } = profileSchema.parse(raw);
+    const attempt = this.connectionTests.get(profileID);
+    if (attempt !== undefined) {
+      attempt.cancelled = true;
+      attempt.connector?.close();
+      try {
+        await attempt.closeDatabase?.();
+      } catch {
+        // The in-flight connection attempt owns final cleanup.
+      }
+    }
+    return { disconnected: true };
   }
 
   async connect(raw: unknown): Promise<unknown> {
@@ -87,6 +118,11 @@ export class DatabaseSessions {
   }
 
   async disconnectAll(): Promise<{ disconnected: true }> {
+    await Promise.all(
+      [...this.connectionTests.keys()].map((profileID) =>
+        this.cancelTestConnection({ profileID }),
+      ),
+    );
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
     await Promise.all(sessions.map(closeSession));
@@ -217,7 +253,10 @@ export class DatabaseSessions {
     return session;
   }
 
-  private async open(input: z.infer<typeof connectionSchema>): Promise<{
+  private async open(
+    input: z.infer<typeof connectionSchema>,
+    testAttempt?: ConnectionTestAttempt,
+  ): Promise<{
     session: Session;
     metadata: unknown;
   }> {
@@ -231,6 +270,7 @@ export class DatabaseSessions {
         scopes: ["https://www.googleapis.com/auth/cloud-platform"],
       }),
     });
+    if (testAttempt !== undefined) testAttempt.connector = connector;
     const startedAt = performance.now();
     let closeDatabase: (() => Promise<unknown>) | undefined;
     try {
@@ -239,6 +279,8 @@ export class DatabaseSessions {
         authType: input.useIAM ? AuthTypes.IAM : AuthTypes.PASSWORD,
         ipType: IpAddressTypes[input.ipType],
       });
+      if (connectionTestWasCancelled(testAttempt))
+        throw connectionTestCancelled();
       if (input.engine === "PostgreSQL") {
         const client = new pg.Client({
           ...options,
@@ -249,7 +291,11 @@ export class DatabaseSessions {
           connectionTimeoutMillis: 15_000,
         });
         closeDatabase = () => client.end();
+        if (testAttempt !== undefined)
+          testAttempt.closeDatabase = closeDatabase;
         await client.connect();
+        if (connectionTestWasCancelled(testAttempt))
+          throw connectionTestCancelled();
         if (input.readOnly)
           await client.query("SET default_transaction_read_only = on");
         const result = await client.query<{
@@ -288,6 +334,9 @@ export class DatabaseSessions {
         connectTimeout: 15_000,
       });
       closeDatabase = () => client.end();
+      if (testAttempt !== undefined) testAttempt.closeDatabase = closeDatabase;
+      if (connectionTestWasCancelled(testAttempt))
+        throw connectionTestCancelled();
       await client.query("SET time_zone = '+00:00'");
       if (input.readOnly)
         await client.query("SET SESSION TRANSACTION READ ONLY");
@@ -318,6 +367,8 @@ export class DatabaseSessions {
         // Preserve the original connection failure.
       }
       connector.close();
+      if (connectionTestWasCancelled(testAttempt))
+        throw connectionTestCancelled();
       const diagnostic = databaseDiagnostic("CLOUD_SQL_CONNECTION", error);
       throw new RPCError(
         -32020,
@@ -770,6 +821,17 @@ const notConnected = (): RPCError =>
     "Connect to the database first.",
     "DATABASE_NOT_CONNECTED",
   );
+
+const connectionTestCancelled = (): RPCError =>
+  new RPCError(
+    -32800,
+    "The connection test was cancelled.",
+    "CONNECTION_TEST_CANCELLED",
+  );
+
+const connectionTestWasCancelled = (
+  attempt: ConnectionTestAttempt | undefined,
+): boolean => attempt?.cancelled === true;
 
 const encodeCell = (value: unknown): unknown => {
   if (value === null || value === undefined) return { kind: "null" };

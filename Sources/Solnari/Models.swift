@@ -420,6 +420,55 @@ struct AssistantMessage: Identifiable, Hashable, Sendable {
   let sql: String?
 }
 
+enum ConnectionDraftValidationIssue: Hashable, Sendable {
+  case connectionName
+  case unsupportedTransport
+  case database
+  case host
+  case port
+  case user
+  case cloudProject
+  case cloudRegion
+  case cloudInstance
+  case sshHost
+  case sshPort
+  case sshUser
+  case kubernetesContext
+  case kubernetesNamespace
+  case kubernetesResource
+  case kubernetesRemotePort
+  case relayImage
+  case tlsRequired
+  case organizationManagedPolicy
+  case migrationAccess
+
+  var message: String {
+    switch self {
+    case .connectionName: "Enter a connection name before saving."
+    case .unsupportedTransport: "SQLite supports direct file connections only."
+    case .database: "Enter the database name or choose a SQLite database file."
+    case .host: "Enter the database host."
+    case .port: "Enter a port number between 1 and 65535."
+    case .user: "Enter the database user."
+    case .cloudProject: "Enter a valid Google Cloud project ID."
+    case .cloudRegion: "Enter a valid Cloud SQL region."
+    case .cloudInstance: "Enter the Cloud SQL instance name."
+    case .sshHost: "Enter the SSH bastion host."
+    case .sshPort: "Enter an SSH port number between 1 and 65535."
+    case .sshUser: "Enter the SSH user."
+    case .kubernetesContext: "Enter the Kubernetes context."
+    case .kubernetesNamespace: "Enter the Kubernetes namespace."
+    case .kubernetesResource: "Enter the Kubernetes resource name."
+    case .kubernetesRemotePort: "Enter a Kubernetes remote port between 1 and 65535."
+    case .relayImage: "Enter the temporary relay image."
+    case .tlsRequired: "Enable TLS for a remote direct connection under Standard policy."
+    case .organizationManagedPolicy:
+      "Organization-managed policy is not available in this build."
+    case .migrationAccess: "Migration access is not available in this build."
+    }
+  }
+}
+
 struct ConnectionDraft: Equatable, Sendable {
   var name = ""
   var engine: DatabaseEngine = .postgresql
@@ -499,48 +548,77 @@ struct ConnectionDraft: Equatable, Sendable {
     transport == .cloudSQL && useIAM ? "" : password
   }
 
-  var isValid: Bool {
-    guard !name.trimmed.isEmpty, supportsSelectedTransport, isUserManagedPolicyValid else {
-      return false
-    }
-    if engine == .sqlite {
-      return !database.trimmed.isEmpty
-    }
-    guard !host.trimmed.isEmpty, !user.trimmed.isEmpty, Self.isValidPort(port) else {
-      return false
-    }
+  var testValidationIssues: [ConnectionDraftValidationIssue] {
+    var issues: [ConnectionDraftValidationIssue] = []
+    guard supportsSelectedTransport else { return [.unsupportedTransport] }
+
+    if database.trimmed.isEmpty { issues.append(.database) }
+    if engine == .sqlite { return issues + policyValidationIssues }
+
+    if user.trimmed.isEmpty { issues.append(.user) }
     switch transport {
     case .direct:
-      return true
+      if host.trimmed.isEmpty { issues.append(.host) }
+      if !Self.isValidPort(port) { issues.append(.port) }
     case .cloudSQL:
-      return !cloudProject.trimmed.isEmpty && !cloudRegion.trimmed.isEmpty
-        && !cloudInstance.trimmed.isEmpty
+      if !Self.isValidGoogleCloudProjectID(cloudProject) { issues.append(.cloudProject) }
+      if !Self.isValidCloudSQLRegion(cloudRegion) { issues.append(.cloudRegion) }
+      if cloudInstance.trimmed.isEmpty { issues.append(.cloudInstance) }
     case .ssh:
-      return !sshHost.trimmed.isEmpty && !sshUser.trimmed.isEmpty && Self.isValidPort(sshPort)
+      if host.trimmed.isEmpty { issues.append(.host) }
+      if !Self.isValidPort(port) { issues.append(.port) }
+      if sshHost.trimmed.isEmpty { issues.append(.sshHost) }
+      if !Self.isValidPort(sshPort) { issues.append(.sshPort) }
+      if sshUser.trimmed.isEmpty { issues.append(.sshUser) }
     case .kubernetes:
-      guard !kubeContext.trimmed.isEmpty, !namespace.trimmed.isEmpty else { return false }
+      if kubeContext.trimmed.isEmpty { issues.append(.kubernetesContext) }
+      if namespace.trimmed.isEmpty { issues.append(.kubernetesNamespace) }
       switch kubernetesMode {
       case .existingResource:
-        return !kubernetesResourceName.trimmed.isEmpty
-          && Self.isValidPort(kubernetesRemotePort)
+        if kubernetesResourceName.trimmed.isEmpty { issues.append(.kubernetesResource) }
+        if !Self.isValidPort(kubernetesRemotePort) { issues.append(.kubernetesRemotePort) }
       case .temporaryRelay:
-        return !relayImage.trimmed.isEmpty
+        if host.trimmed.isEmpty { issues.append(.host) }
+        if !Self.isValidPort(port) { issues.append(.port) }
+        if relayImage.trimmed.isEmpty { issues.append(.relayImage) }
       }
     }
+    return issues + policyValidationIssues
   }
 
+  var saveValidationIssues: [ConnectionDraftValidationIssue] {
+    (name.trimmed.isEmpty ? [.connectionName] : []) + testValidationIssues
+  }
+
+  var canTestConnection: Bool { testValidationIssues.isEmpty }
+  var canSaveConnection: Bool { saveValidationIssues.isEmpty }
+  var isValid: Bool { canSaveConnection }
+
   func makeProfile(id: UUID = UUID()) throws -> ConnectionProfile {
+    try makeProfile(id: id, requiresName: true)
+  }
+
+  func makeTestProfile(id: UUID = UUID()) throws -> ConnectionProfile {
+    try makeProfile(id: id, requiresName: false)
+  }
+
+  private func makeProfile(id: UUID, requiresName: Bool) throws -> ConnectionProfile {
     let portNumber = engine == .sqlite ? 0 : (Int(port) ?? 0)
-    guard engine == .sqlite || (1...65_535).contains(portNumber) else {
+    let usesDatabasePort =
+      transport == .direct || transport == .ssh
+      || (transport == .kubernetes && kubernetesMode == .temporaryRelay)
+    guard engine == .sqlite || !usesDatabasePort || (1...65_535).contains(portNumber) else {
       throw SolnariDatabaseError.invalidPort
     }
     guard supportsSelectedTransport else {
       throw SolnariDatabaseError.unsupportedConnection
     }
-    guard isValid else { throw SolnariDatabaseError.incompleteConnection }
+    guard requiresName ? canSaveConnection : canTestConnection else {
+      throw SolnariDatabaseError.incompleteConnection
+    }
     return ConnectionProfile(
       id: id,
-      name: name.trimmed,
+      name: name.trimmed.isEmpty ? "Connection test" : name.trimmed,
       database: database.trimmed,
       engine: engine,
       transport: transport,
@@ -582,14 +660,16 @@ struct ConnectionDraft: Equatable, Sendable {
     )
   }
 
-  private var isUserManagedPolicyValid: Bool {
-    guard securityPolicy != .organizationManaged, accessLevel != .migration else { return false }
+  private var policyValidationIssues: [ConnectionDraftValidationIssue] {
+    var issues: [ConnectionDraftValidationIssue] = []
+    if securityPolicy == .organizationManaged { issues.append(.organizationManagedPolicy) }
+    if accessLevel == .migration { issues.append(.migrationAccess) }
     if securityPolicy == .standard, transport == .direct, engine != .sqlite,
       !Self.isLoopbackHost(host), !requiresTLS
     {
-      return false
+      issues.append(.tlsRequired)
     }
-    return true
+    return issues
   }
 
   private static func isValidPort(_ value: String) -> Bool {
@@ -598,6 +678,20 @@ struct ConnectionDraft: Equatable, Sendable {
 
   private static func isLoopbackHost(_ value: String) -> Bool {
     ["localhost", "127.0.0.1", "::1"].contains(value.trimmed.lowercased())
+  }
+
+  private static func isValidGoogleCloudProjectID(_ value: String) -> Bool {
+    value.trimmed.range(
+      of: #"^[a-z][a-z0-9-]{4,28}[a-z0-9]$"#,
+      options: .regularExpression
+    ) != nil
+  }
+
+  private static func isValidCloudSQLRegion(_ value: String) -> Bool {
+    value.trimmed.range(
+      of: #"^[a-z]+(?:-[a-z0-9]+)+[0-9]$"#,
+      options: .regularExpression
+    ) != nil
   }
 }
 
@@ -624,6 +718,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case missingExecutable(String)
   case transportFailed(String)
   case transportTimedOut
+  case connectionTestTimedOut
   case queryNotAllowedForAccessLevel
   case invalidProfileStore
 
@@ -638,6 +733,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .missingExecutable(let name): "Install or configure the required \(name) command."
     case .transportFailed(let message): "The connection path failed: \(message)"
     case .transportTimedOut: "The local connection path did not become ready in time."
+    case .connectionTestTimedOut: "The connection test timed out. Check the address and path."
     case .queryNotAllowedForAccessLevel:
       "This SQL is not allowed by the connection's access level."
     case .invalidProfileStore:

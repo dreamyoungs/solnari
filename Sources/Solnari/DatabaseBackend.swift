@@ -26,6 +26,23 @@ actor DatabaseBackend {
   func testConnection(profile: ConnectionProfile, password: String) async throws
     -> ConnectionMetadata
   {
+    try await ConnectionTestDeadline.run(
+      timeout: .seconds(connectionTestTimeoutSeconds(for: profile)),
+      operation: { [self] in
+        try await performConnectionTest(profile: profile, password: password)
+      },
+      cleanup: { [self] in
+        if profile.transport == .cloudSQL {
+          await nodeCloudSQL.cancelTestConnection(profileID: profile.id)
+        }
+        await transports.close(profileID: profile.id)
+      }
+    )
+  }
+
+  private func performConnectionTest(profile: ConnectionProfile, password: String) async throws
+    -> ConnectionMetadata
+  {
     if profile.transport == .cloudSQL {
       return try await nodeCloudSQL.testConnection(profile: profile, password: password)
     }
@@ -38,6 +55,15 @@ actor DatabaseBackend {
     } catch {
       await transports.close(profileID: profile.id)
       throw error
+    }
+  }
+
+  private func connectionTestTimeoutSeconds(for profile: ConnectionProfile) -> Int {
+    switch profile.transport {
+    case .direct: 8
+    case .cloudSQL, .ssh: 20
+    case .kubernetes:
+      profile.kubernetes?.effectiveConnectionMode == .temporaryRelay ? 60 : 20
     }
   }
 

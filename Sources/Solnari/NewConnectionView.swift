@@ -8,6 +8,7 @@ struct NewConnectionView: View {
   private let existingProfileID: UUID?
   @State private var draft: ConnectionDraft
   @State private var testState: TestState = .idle
+  @State private var connectionTestTask: Task<Void, Never>?
   @State private var adcIdentityState: ADCIdentityState = .idle
   @State private var autoFilledIAMUsername: String?
   @State private var cloudInstances: [CloudSQLInstanceSummary] = []
@@ -33,6 +34,7 @@ struct NewConnectionView: View {
   enum TestState: Equatable {
     case idle
     case testing
+    case saving
     case success(ConnectionMetadata)
     case failure(String)
   }
@@ -116,13 +118,19 @@ struct NewConnectionView: View {
       }
     }
     .onChange(of: draft) {
-      guard !isTesting, testState != .idle else { return }
-      testState = .idle
+      if isTesting {
+        cancelConnectionTest()
+      } else if isSaving {
+        return
+      } else if testState != .idle {
+        testState = .idle
+      }
     }
     .onAppear {
       focusedField = .connectionName
       Task { await resolveADCIdentityIfNeeded() }
     }
+    .onDisappear { cancelConnectionTest() }
   }
 
   private var sheetHeader: some View {
@@ -143,12 +151,14 @@ struct NewConnectionView: View {
       }
       Spacer()
       Button {
+        cancelConnectionTest()
         dismiss()
       } label: {
         Image(systemName: "xmark")
           .frame(width: 24, height: 24)
       }
       .buttonStyle(.plain)
+      .disabled(isSaving)
     }
     .padding(.horizontal, 22)
     .frame(height: 68)
@@ -798,16 +808,22 @@ struct NewConnectionView: View {
     HStack {
       switch testState {
       case .idle:
-        Text(
-          settings.text(
-            draft.supportsSelectedTransport
-              ? "Test the path before saving."
-              : "SQLite supports direct file connections only.")
-        )
-        .foregroundStyle(.secondary)
+        if let issue = draft.testValidationIssues.first ?? draft.saveValidationIssues.first {
+          Label(settings.text(issue.message), systemImage: "info.circle")
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .frame(maxWidth: 310, alignment: .leading)
+        } else {
+          Text(settings.text("Test the path before saving."))
+            .foregroundStyle(.secondary)
+        }
       case .testing:
         ProgressView().controlSize(.small)
         Text(settings.text("Testing connection…"))
+          .foregroundStyle(.secondary)
+      case .saving:
+        ProgressView().controlSize(.small)
+        Text(settings.text("Saving connection…"))
           .foregroundStyle(.secondary)
       case .success(let metadata):
         Label(
@@ -822,28 +838,27 @@ struct NewConnectionView: View {
           .frame(maxWidth: 300, alignment: .leading)
       }
       Spacer()
-      Button(settings.text("Cancel")) { dismiss() }
-        .keyboardShortcut(.cancelAction)
-      Button(settings.text("Test connection")) {
-        Task {
-          let testedDraft = draft
-          testState = .testing
-          do {
-            let metadata = try await model.testConnection(
-              testedDraft,
-              replacing: existingProfileID
-            )
-            testState = draft == testedDraft ? .success(metadata) : .idle
-          } catch {
-            testState = draft == testedDraft ? .failure(error.localizedDescription) : .idle
-          }
+      Button(settings.text(isTesting ? "Cancel test" : "Cancel")) {
+        if isTesting {
+          cancelConnectionTest()
+        } else {
+          dismiss()
         }
       }
-      .disabled(isTesting || !draft.isValid)
+      .keyboardShortcut(.cancelAction)
+      .disabled(isSaving)
+      Button(settings.text("Test connection")) {
+        startConnectionTest()
+      }
+      .disabled(isBusy || !draft.canTestConnection)
+      .help(
+        draft.testValidationIssues.first.map { settings.text($0.message) }
+          ?? settings.text("Test connection")
+      )
       Button(settings.text(existingProfileID == nil ? "Save & connect" : "Save & reconnect")) {
         Task {
           let savedDraft = draft
-          testState = .testing
+          testState = .saving
           do {
             try await model.saveAndConnect(savedDraft, replacing: existingProfileID)
             dismiss()
@@ -854,7 +869,7 @@ struct NewConnectionView: View {
       }
       .buttonStyle(.borderedProminent)
       .tint(SolnariTheme.indigo)
-      .disabled(isTesting || !draft.isValid)
+      .disabled(isBusy || !draft.canSaveConnection)
     }
     .font(.caption)
     .padding(.horizontal, 22)
@@ -866,6 +881,40 @@ struct NewConnectionView: View {
   private var isTesting: Bool {
     if case .testing = testState { return true }
     return false
+  }
+
+  private var isSaving: Bool {
+    if case .saving = testState { return true }
+    return false
+  }
+
+  private var isBusy: Bool { isTesting || isSaving }
+
+  private func startConnectionTest() {
+    guard !isTesting, draft.canTestConnection else { return }
+    let testedDraft = draft
+    testState = .testing
+    connectionTestTask = Task {
+      do {
+        let metadata = try await model.testConnection(
+          testedDraft,
+          replacing: existingProfileID
+        )
+        guard !Task.isCancelled else { return }
+        testState = draft == testedDraft ? .success(metadata) : .idle
+      } catch is CancellationError {
+        if draft == testedDraft { testState = .idle }
+      } catch {
+        guard !Task.isCancelled else { return }
+        testState = draft == testedDraft ? .failure(error.localizedDescription) : .idle
+      }
+    }
+  }
+
+  private func cancelConnectionTest() {
+    connectionTestTask?.cancel()
+    connectionTestTask = nil
+    if isTesting { testState = .idle }
   }
 
   private var isDiscovering: Bool {

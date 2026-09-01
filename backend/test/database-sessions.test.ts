@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  DatabaseSessions,
   encodeMySQLCell,
   encodePostgresCell,
 } from "../src/database-sessions.js";
 
 describe("database result encoding", () => {
+  it("treats cancelling an absent connection test as idempotent", async () => {
+    const sessions = new DatabaseSessions();
+
+    await expect(
+      sessions.cancelTestConnection({
+        profileID: "00000000-0000-4000-8000-000000000001",
+      }),
+    ).resolves.toEqual({ disconnected: true });
+  });
+
   it("keeps PostgreSQL zoned and zone-less timestamps distinct", () => {
     const instant = new Date("2026-08-31T12:34:56.123Z");
 

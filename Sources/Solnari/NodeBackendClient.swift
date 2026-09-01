@@ -23,6 +23,9 @@ enum NodeBackendError: LocalizedError, Sendable {
   }
 
   private static func localizedBackendMessage(code: String, fallback: String) -> String {
+    if code == "CONNECTION_TEST_CANCELLED" {
+      return String(localized: "The connection test was cancelled.")
+    }
     if code.hasPrefix("CLOUD_SQL_CONNECTION_") {
       if code.contains("SQLSTATE_28") || code.contains("ER_ACCESS_DENIED_ERROR")
         || code.hasSuffix("HTTP_401") || code.hasSuffix("HTTP_403")

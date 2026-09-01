@@ -60,6 +60,13 @@ actor NodeCloudSQLBackend {
     )
   }
 
+  func cancelTestConnection(profileID: UUID) async {
+    let _: DisconnectResponse? = try? await client.call(
+      method: "cloudSql.cancelTestConnection",
+      params: ProfileParameters(profileID: profileID)
+    )
+  }
+
   func connect(profile: ConnectionProfile, password: String) async throws -> ConnectionMetadata {
     try await client.call(
       method: "database.connect",
