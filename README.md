@@ -155,6 +155,9 @@ GitHub Release에서 내려받을 수 있는 서명·notarization된 앱은 아�
 - `.node-version`에 명시한 Node.js 24 LTS와 npm(소스 build에만 필요하며 완성된 app에는
   runtime을 포함합니다)
 
+Xcode 또는 Command Line Tools가 없다면 build script가 설치 명령을 안내합니다. standalone
+Command Line Tools는 `xcode-select --install`로 설치할 수 있습니다.
+
 Cloud SQL 연결과 리소스 조회는 app에 포함된 Node backend가 Google 공식 Auth Library와
 Cloud SQL Connector로 처리합니다. Solnari는 `gcloud` 또는 외부 `cloud-sql-proxy`를 실행하지
 않습니다. 현재 SSH와 Kubernetes 경로에는 각각 OpenSSH와 `kubectl`이 필요합니다.
@@ -172,14 +175,20 @@ Cloud SQL Connector로 처리합니다. Solnari는 `gcloud` 또는 외부 `cloud
 git clone https://github.com/dreamyoungs/solnari.git
 cd solnari
 nvm use # nvm을 사용한다면
+npm --prefix backend ci --include=dev
 ./Scripts/run-app.sh
 ```
 
 Release 설정의 로컬 앱을 만들려면 다음을 실행합니다.
 
 ```bash
+npm --prefix backend ci --include=dev
 ./Scripts/build-app.sh release
 ```
+
+최초 app bundle build에서는 `.node-version`과 일치하는 공식 Node.js license를 내려받아
+checksum을 검증한 뒤 `.build` cache에 보관합니다. 로컬 Node 설치 directory의 license file에는
+의존하지 않습니다.
 
 `run-app.sh`는 macOS의 Documents 폴더 접근 요청을 피하도록 빌드된 앱을
 `~/Applications/Solnari Development.app`에 복사해서 실행합니다. 이 앱은

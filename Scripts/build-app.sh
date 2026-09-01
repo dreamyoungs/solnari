@@ -12,9 +12,25 @@ case "$configuration" in
 esac
 
 cd "$repository_root"
+
+developer_directory="$(/usr/bin/xcode-select --print-path 2>/dev/null || true)"
+swift_executable="$(/usr/bin/xcrun --find swift 2>/dev/null || true)"
+if [[ -z "$developer_directory" || ! -d "$developer_directory" || \
+      -z "$swift_executable" || ! -x "$swift_executable" ]]; then
+  print -u2 "Xcode or Xcode Command Line Tools with Swift 6.1 or newer is required to build Solnari."
+  print -u2 "Install the standalone tools with: xcode-select --install"
+  print -u2 "Or select an installed Xcode with: sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer"
+  exit 69
+fi
+if ! "$swift_executable" package dump-package >/dev/null; then
+  print -u2 "The selected Swift toolchain cannot load Package.swift."
+  print -u2 "Update Xcode or Command Line Tools, then verify the selection with: xcode-select --print-path"
+  exit 69
+fi
+
 node_executable="${SOLNARI_NODE:-$(command -v node || true)}"
 if [[ -z "$node_executable" || ! -x "$node_executable" ]]; then
-  print -u2 "Node.js 24 or newer is required to build Solnari."
+  print -u2 "Node.js $(<"$repository_root/.node-version") with npm is required to build Solnari."
   exit 69
 fi
 node_executable="${node_executable:A}"
@@ -23,6 +39,15 @@ actual_node_version="$($node_executable -p 'process.versions.node')"
 if [[ "$actual_node_version" != "$required_node_version" ]]; then
   print -u2 "Node.js $required_node_version is required to build Solnari (found $actual_node_version)."
   exit 69
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  print -u2 "npm is required to build the bundled Node backend."
+  exit 69
+fi
+if [[ ! -x "$repository_root/backend/node_modules/.bin/esbuild" ]]; then
+  print -u2 "Backend build dependencies are not installed."
+  print -u2 "Run: npm --prefix backend ci --include=dev"
+  exit 66
 fi
 npm --prefix "$repository_root/backend" run build
 swift build --configuration "$configuration" --product Solnari
@@ -59,10 +84,40 @@ mkdir -p \
   "$repository_root/LICENSE" \
   "$staged_application/Contents/Resources/Licenses/Solnari-LICENSE.txt"
 
-node_license="${node_executable:h:h}/LICENSE"
-if [[ ! -f "$node_license" ]]; then
-  print -u2 "The selected Node.js installation does not include its LICENSE file."
-  exit 66
+case "$required_node_version" in
+  24.20.0)
+    node_license_sha256="5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"
+    ;;
+  *)
+    print -u2 "No verified Node.js LICENSE checksum is configured for $required_node_version."
+    exit 65
+    ;;
+esac
+node_license_directory="$repository_root/.build/licenses/node-$required_node_version"
+node_license="$node_license_directory/LICENSE"
+node_license_url="https://raw.githubusercontent.com/nodejs/node/v$required_node_version/LICENSE"
+node_license_checksum=""
+if [[ -f "$node_license" ]]; then
+  node_license_checksum="$(/usr/bin/shasum -a 256 "$node_license" | /usr/bin/awk '{print $1}')"
+fi
+if [[ "$node_license_checksum" != "$node_license_sha256" ]]; then
+  mkdir -p "$node_license_directory"
+  node_license_download="$node_license.download"
+  /bin/rm -f "$node_license_download"
+  if ! /usr/bin/curl --fail --location --silent --show-error --retry 3 \
+    --output "$node_license_download" "$node_license_url"; then
+    /bin/rm -f "$node_license_download"
+    print -u2 "Could not download the verified Node.js $required_node_version LICENSE."
+    print -u2 "Check the network connection and retry the build."
+    exit 69
+  fi
+  node_license_checksum="$(/usr/bin/shasum -a 256 "$node_license_download" | /usr/bin/awk '{print $1}')"
+  if [[ "$node_license_checksum" != "$node_license_sha256" ]]; then
+    /bin/rm -f "$node_license_download"
+    print -u2 "The downloaded Node.js LICENSE checksum did not match the pinned version."
+    exit 65
+  fi
+  /bin/mv "$node_license_download" "$node_license"
 fi
 "$node_executable" "$repository_root/Scripts/collect-licenses.mjs" \
   "$node_license" \

@@ -136,6 +136,8 @@ also enforce that Cloud SQL cannot silently fall back to `gcloud` or an external
 
 Requirements: macOS 14 or newer, a Swift 6.1-compatible toolchain, and the Node.js 24 LTS version
 pinned in `.node-version` with npm for source builds. The built app bundles its Node runtime.
+If Xcode or Command Line Tools is missing, the build script prints the installation command. Install
+the standalone Command Line Tools with `xcode-select --install`.
 
 The bundled Node backend uses Google's official Auth Library and Cloud SQL Connector for discovery,
 IAM authentication, and Cloud SQL sessions. Solnari never executes `gcloud` or an external
@@ -152,14 +154,20 @@ IAM authentication, and Cloud SQL sessions. Solnari never executes `gcloud` or a
 git clone https://github.com/dreamyoungs/solnari.git
 cd solnari
 nvm use # when using nvm
+npm --prefix backend ci --include=dev
 ./Scripts/run-app.sh
 ```
 
 Build a local Release configuration app:
 
 ```bash
+npm --prefix backend ci --include=dev
 ./Scripts/build-app.sh release
 ```
+
+On the first app bundle build, the script downloads the official Node.js license matching
+`.node-version`, verifies its checksum, and caches it under `.build`. It does not depend on a license
+file in the local Node installation directory.
 
 `run-app.sh` installs the development bundle at `~/Applications/Solnari Development.app` before
 launching it, avoiding macOS Documents-folder access prompts caused by running a bundle inside a
