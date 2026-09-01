@@ -15,6 +15,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache 2.0"></a>
 </p>
 
+<p align="center">
+  <img src="docs/images/solnari-workspace.png" alt="Solnari connection explorer, SQL editor, result grid, and Codex panel" width="1200">
+</p>
+
 > [!NOTE]
 > The current version is a **0.1.0 source preview**. Development builds work from source, but no
 > official Developer ID-signed and notarized binary is available yet.

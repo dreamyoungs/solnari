@@ -15,6 +15,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache 2.0"></a>
 </p>
 
+<p align="center">
+  <img src="docs/images/solnari-workspace.png" alt="솔나리의 연결 탐색기, SQL 편집기, 결과 그리드와 Codex 패널" width="1200">
+</p>
+
 > [!NOTE]
 > 현재 버전은 **0.1.0 source preview**입니다. 소스에서 빌드한 개발용 앱은 사용할 수 있지만,
 > Developer ID로 서명·notarization된 공식 바이너리는 아직 배포하지 않습니다.
