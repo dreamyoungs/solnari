@@ -5,6 +5,16 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+### Added
+
+- Result-cell context menus generate value-based `SELECT` and reviewable `DELETE` statements in the
+  SQL editor without executing them automatically, including on read-only connections.
+
+### Fixed
+
+- Structured Cloud SQL JSON values are displayed as JSON instead of `[object Object]`.
+- Failed queries no longer leave a previous successful result visible in the result grid.
+
 ## [0.2.1 source preview] - 2026-09-03
 
 ### Fixed

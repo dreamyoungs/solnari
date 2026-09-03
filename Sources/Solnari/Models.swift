@@ -413,12 +413,20 @@ struct EditorTab: Identifiable, Hashable, Sendable {
   var title: String
   var sql: String
   var isModified: Bool
+  var sourceObject: SchemaObject?
 
-  init(id: UUID = UUID(), title: String, sql: String, isModified: Bool = false) {
+  init(
+    id: UUID = UUID(),
+    title: String,
+    sql: String,
+    isModified: Bool = false,
+    sourceObject: SchemaObject? = nil
+  ) {
     self.id = id
     self.title = title
     self.sql = sql
     self.isModified = isModified
+    self.sourceObject = sourceObject
   }
 }
 
@@ -427,6 +435,7 @@ struct ConnectionWorkspace: Hashable, Sendable {
   var editorTabs: [EditorTab]
   var selectedTabID: UUID?
   var queryTable: QueryTableData
+  var querySourceObject: SchemaObject?
   var executionMessage: String
   var selectedResultTab: String
   var isRunning: Bool
@@ -445,6 +454,7 @@ struct ConnectionWorkspace: Hashable, Sendable {
     editorTabs = [query]
     selectedTabID = query.id
     queryTable = .empty
+    querySourceObject = nil
     executionMessage = "No results"
     selectedResultTab = "Results"
     isRunning = false

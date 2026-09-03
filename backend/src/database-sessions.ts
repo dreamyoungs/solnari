@@ -865,7 +865,7 @@ const encodeCell = (value: unknown): unknown => {
     return { kind: "instant", value: value.toISOString() };
   if (Buffer.isBuffer(value))
     return { kind: "binary", byteCount: value.byteLength };
-  const text = String(value);
+  const text = textCellValue(value);
   if (Buffer.byteLength(text, "utf8") > maximumCellBytes) {
     throw new RPCError(
       -32051,
@@ -874,6 +874,20 @@ const encodeCell = (value: unknown): unknown => {
     );
   }
   return { kind: "text", value: text };
+};
+
+const textCellValue = (value: unknown): string => {
+  if (typeof value === "object") {
+    try {
+      const json = JSON.stringify(value, (_key, nestedValue: unknown) =>
+        typeof nestedValue === "bigint" ? String(nestedValue) : nestedValue,
+      );
+      if (json !== undefined) return json;
+    } catch {
+      // Fall through for driver-specific values that cannot be represented as JSON.
+    }
+  }
+  return String(value);
 };
 
 const assertResultDimensions = (

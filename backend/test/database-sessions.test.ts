@@ -51,4 +51,17 @@ describe("database result encoding", () => {
       encodeMySQLCell("9223372036854775807", { type: 8 } as never),
     ).toEqual({ kind: "integer", value: "9223372036854775807" });
   });
+
+  it("serializes structured JSON cells instead of displaying object Object", () => {
+    const value = { title: "Solnari", nested: { enabled: true } };
+
+    expect(encodePostgresCell(value, 3802)).toEqual({
+      kind: "text",
+      value: '{"title":"Solnari","nested":{"enabled":true}}',
+    });
+    expect(encodeMySQLCell(value, undefined)).toEqual({
+      kind: "text",
+      value: '{"title":"Solnari","nested":{"enabled":true}}',
+    });
+  });
 });

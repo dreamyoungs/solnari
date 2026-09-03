@@ -66,6 +66,7 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - 로컬 연결 정의와 AES-GCM으로 암호화한 사용자 전용 credential vault
 - 다중 탭 SQL editor와 크기 조절 가능한 editor/result layout
 - 드래그·경계선 더블클릭 컬럼 맞춤과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
+- 결과 셀 값으로 검색·비교·검토용 삭제 SQL을 편집기에 생성하는 우클릭 메뉴
 - CSV, TSV, JSON, JSON Lines, Markdown, SQL `INSERT` 복사·내보내기
 - PostgreSQL/MySQL/SQLite의 문자셋·정렬 규칙 설정 UI
 - 절대 시간과 시간대 없는 값을 구분하는 결과 시간대 표시

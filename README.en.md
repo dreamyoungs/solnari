@@ -66,6 +66,7 @@ Solnari now aims to be:
 - Local connection definitions and a user-only AES-GCM credential vault
 - Multi-tab SQL editor and resizable editor/result layout
 - AppKit result grid with drag resizing, divider double-click fitting, and multi-row selection
+- Result-cell context menus that generate search, comparison, and reviewable delete SQL in the editor
 - Copy and export to CSV, TSV, JSON, JSON Lines, Markdown, and SQL `INSERT`
 - Character-set and collation configuration UI
 - Display time zones that preserve zoned and zone-less timestamp semantics

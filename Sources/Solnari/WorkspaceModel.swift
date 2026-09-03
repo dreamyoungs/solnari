@@ -85,6 +85,14 @@ final class WorkspaceModel: ObservableObject {
     workspace(for: selectedConnectionID).queryTable
   }
 
+  var querySourceObject: SchemaObject? {
+    workspace(for: selectedConnectionID).querySourceObject
+  }
+
+  var canGenerateDeleteQueryFromResult: Bool {
+    querySourceObject?.kind == .table
+  }
+
   var executionMessage: String {
     workspace(for: selectedConnectionID).executionMessage
   }
@@ -125,6 +133,7 @@ final class WorkspaceModel: ObservableObject {
           }
           workspace.editorTabs[index].sql = newValue
           workspace.editorTabs[index].isModified = true
+          workspace.editorTabs[index].sourceObject = nil
         }
       }
     )
@@ -163,7 +172,7 @@ final class WorkspaceModel: ObservableObject {
   func generateSelect(for object: SchemaObject) {
     guard let engine = selectedConnection?.engine else { return }
     let sql = SQLObjectQueryBuilder.selectAll(from: object, engine: engine)
-    let tab = EditorTab(title: object.name, sql: sql)
+    let tab = EditorTab(title: object.name, sql: sql, sourceObject: object)
     updateWorkspace(for: selectedConnectionID) {
       $0.editorTabs.append(tab)
       $0.selectedTabID = tab.id
@@ -371,11 +380,22 @@ final class WorkspaceModel: ObservableObject {
       !workspace(for: profileID).isRunning,
       let sql = selectedTab?.sql.trimmingCharacters(in: .whitespacesAndNewlines), !sql.isEmpty
     else { return }
+    let explicitSourceObject = workspace(for: profileID).editorTabs.first {
+      $0.id == workspace(for: profileID).selectedTabID
+    }?.sourceObject
 
     if connections.first(where: { $0.id == profileID })?.status != .connected {
       await connect(profileID: profileID)
       guard connections.first(where: { $0.id == profileID })?.status == .connected else { return }
     }
+    guard let engine = connections.first(where: { $0.id == profileID })?.engine else { return }
+    let querySourceObject =
+      explicitSourceObject
+      ?? SQLObjectQueryBuilder.inferredSourceObject(
+        from: sql,
+        objects: workspace(for: profileID).schema.objects,
+        engine: engine
+      )
 
     updateWorkspace(for: profileID) {
       $0.isRunning = true
@@ -385,6 +405,7 @@ final class WorkspaceModel: ObservableObject {
       let result = try await backend.execute(profileID: profileID, sql: sql)
       updateWorkspace(for: profileID) {
         $0.queryTable = result.table
+        $0.querySourceObject = querySourceObject
         $0.executionMessage =
           result.table.rows.isEmpty
           ? "Query completed · \(result.durationMilliseconds) ms"
@@ -398,9 +419,17 @@ final class WorkspaceModel: ObservableObject {
       }
     } catch {
       if areConnectionOperationsSuspended {
-        updateWorkspace(for: profileID) { $0.executionMessage = "No results" }
+        updateWorkspace(for: profileID) {
+          $0.queryTable = .empty
+          $0.querySourceObject = nil
+          $0.executionMessage = "No results"
+        }
       } else {
-        updateWorkspace(for: profileID) { $0.executionMessage = "Query failed" }
+        updateWorkspace(for: profileID) {
+          $0.queryTable = .empty
+          $0.querySourceObject = nil
+          $0.executionMessage = "Query failed"
+        }
         presentedError = error.localizedDescription
       }
     }
@@ -445,8 +474,45 @@ final class WorkspaceModel: ObservableObject {
   func clearResults() {
     updateWorkspace(for: selectedConnectionID) {
       $0.queryTable = .empty
+      $0.querySourceObject = nil
       $0.executionMessage = "No results"
     }
+  }
+
+  func generateQueryFromResultCell(
+    rowIndex: Int,
+    columnIndex: Int,
+    action: ResultCellQueryAction
+  ) {
+    guard let profile = selectedConnection,
+      let object = querySourceObject,
+      queryTable.columns.indices.contains(columnIndex),
+      queryTable.rows.indices.contains(rowIndex),
+      queryTable.rows[rowIndex].indices.contains(columnIndex)
+    else { return }
+
+    let column = queryTable.columns[columnIndex]
+    let value = queryTable.rows[rowIndex][columnIndex]
+    let sql: String?
+    if action == .deleteMatching {
+      guard object.kind == .table else { return }
+      sql = SQLObjectQueryBuilder.deleteMatching(
+        from: object,
+        column: column,
+        value: value,
+        engine: profile.engine
+      )
+    } else {
+      sql = SQLObjectQueryBuilder.selectMatching(
+        from: object,
+        column: column,
+        value: value,
+        action: action,
+        engine: profile.engine
+      )
+    }
+    guard let sql else { return }
+    placeGeneratedQuery(sql, sourceObject: object)
   }
 
   func formatCurrentSQL() {
@@ -473,6 +539,18 @@ final class WorkspaceModel: ObservableObject {
     updateWorkspace(for: selectedConnectionID) {
       $0.editorTabs[index].sql = sql
       $0.editorTabs[index].isModified = true
+      $0.editorTabs[index].sourceObject = nil
+    }
+  }
+
+  private func placeGeneratedQuery(_ sql: String, sourceObject: SchemaObject) {
+    guard let selectedTabID,
+      let index = editorTabs.firstIndex(where: { $0.id == selectedTabID })
+    else { return }
+    updateWorkspace(for: selectedConnectionID) {
+      $0.editorTabs[index].sql = sql
+      $0.editorTabs[index].isModified = true
+      $0.editorTabs[index].sourceObject = sourceObject
     }
   }
 

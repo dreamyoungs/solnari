@@ -64,6 +64,69 @@ struct WorkspaceSelectionTests {
     await workspace.suspendConnections()
   }
 
+  @Test("테이블 결과 셀은 실행하지 않고 편집기에 조건 쿼리를 생성한다")
+  func resultCellGeneratesQueryInEditorAndFailuresClearOldResults() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SolnariResultQueryTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let profile = sqliteProfile(
+      name: "Result Query",
+      database: directory.appendingPathComponent("result-query.db")
+    )
+    let setupBackend = DatabaseBackend()
+    _ = try await setupBackend.connect(profile: profile, password: "")
+    _ = try await setupBackend.execute(
+      profileID: profile.id,
+      sql: "CREATE TABLE items (id INTEGER PRIMARY KEY, title TEXT)"
+    )
+    _ = try await setupBackend.execute(
+      profileID: profile.id,
+      sql: "INSERT INTO items (id, title) VALUES (1, 'Solnari')"
+    )
+    await setupBackend.disconnectAll()
+
+    let suiteName = "SolnariResultQueryTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let profileStore = ConnectionProfileStore(defaults: defaults)
+    try profileStore.save([profile])
+    let workspace = WorkspaceModel(
+      backend: DatabaseBackend(),
+      profileStore: profileStore,
+      passwordStore: LocalEncryptedPasswordStore(
+        directoryURL: directory.appendingPathComponent("credentials", isDirectory: true)
+      )
+    )
+
+    await workspace.connect(profileID: profile.id)
+    let object = try #require(workspace.schemaObjects.first { $0.name == "items" })
+    await workspace.openData(for: object)
+    #expect(workspace.queryTable.rows.count == 1)
+    #expect(workspace.querySourceObject == object)
+
+    workspace.generateQueryFromResultCell(rowIndex: 0, columnIndex: 1, action: .equal)
+    #expect(workspace.selectedTab?.sql.contains(#"WHERE "title" = 'Solnari'"#) == true)
+    #expect(workspace.queryTable.rows.count == 1)
+
+    workspace.useSQL("SELECT missing_column FROM items")
+    await workspace.runCurrentQuery()
+    #expect(workspace.queryTable == .empty)
+    #expect(workspace.querySourceObject == nil)
+
+    workspace.useSQL(#"SELECT * FROM "main"."items""#)
+    await workspace.runCurrentQuery()
+    #expect(workspace.querySourceObject == object)
+    let profileIndex = try #require(workspace.connections.firstIndex { $0.id == profile.id })
+    workspace.connections[profileIndex].accessLevel = .readOnly
+    #expect(workspace.canGenerateDeleteQueryFromResult)
+    workspace.generateQueryFromResultCell(rowIndex: 0, columnIndex: 0, action: .deleteMatching)
+    #expect(workspace.selectedTab?.sql.contains(#"DELETE FROM "main"."items""#) == true)
+
+    await workspace.suspendConnections()
+  }
+
   private func sqliteProfile(name: String, database: URL) -> ConnectionProfile {
     ConnectionProfile(
       name: name,

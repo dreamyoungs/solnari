@@ -5,6 +5,10 @@ import SwiftUI
 struct ResultTableView: NSViewRepresentable {
   let table: QueryTableData
   let displayTimeZone: TimeZone
+  let sourceObject: SchemaObject?
+  let canGenerateDeleteQuery: Bool
+  let localizedText: (String) -> String
+  let onGenerateQuery: (Int, Int, ResultCellQueryAction) -> Void
   @Binding var columnWidths: [String: CGFloat]
 
   func makeCoordinator() -> Coordinator {
@@ -12,7 +16,7 @@ struct ResultTableView: NSViewRepresentable {
   }
 
   func makeNSView(context: Context) -> NSScrollView {
-    let tableView = NSTableView()
+    let tableView = ResultContextMenuTableView()
     tableView.delegate = context.coordinator
     tableView.dataSource = context.coordinator
     tableView.rowHeight = 29
@@ -37,6 +41,9 @@ struct ResultTableView: NSViewRepresentable {
     scrollView.backgroundColor = .textBackgroundColor
 
     context.coordinator.tableView = tableView
+    tableView.contextMenuProvider = { [weak coordinator = context.coordinator] row, column in
+      coordinator?.contextMenu(row: row, column: column)
+    }
     headerView.onColumnResize = { [weak coordinator = context.coordinator] in
       coordinator?.captureColumnWidths()
     }
@@ -159,6 +166,175 @@ struct ResultTableView: NSViewRepresentable {
       captureColumnWidths()
     }
 
+    func contextMenu(row: Int, column: Int) -> NSMenu? {
+      guard parent.table.rows.indices.contains(row),
+        parent.table.columns.indices.contains(column),
+        parent.table.rows[row].indices.contains(column)
+      else { return nil }
+
+      let value = parent.table.rows[row][column]
+      let menu = NSMenu()
+      menu.autoenablesItems = false
+      menu.addItem(
+        item(
+          parent.localizedText("Copy cell value"),
+          action: #selector(copyContextCell(_:)),
+          row: row,
+          column: column
+        ))
+
+      guard parent.sourceObject != nil else {
+        menu.addItem(.separator())
+        let unavailable = NSMenuItem(
+          title: parent.localizedText(
+            "Query generation is available for results opened from the schema explorer."),
+          action: nil,
+          keyEquivalent: ""
+        )
+        unavailable.isEnabled = false
+        menu.addItem(unavailable)
+        return menu
+      }
+
+      let queryItem = NSMenuItem(
+        title: parent.localizedText("Generate SELECT query"),
+        action: nil,
+        keyEquivalent: ""
+      )
+      let queryMenu = NSMenu()
+      let supportsLiteral = if case .binary = value { false } else { true }
+      let supportsTextSearch = if case .text = value { true } else { false }
+      addQueryItem(
+        parent.localizedText("Equal to this value"),
+        action: .equal,
+        row: row,
+        column: column,
+        enabled: supportsLiteral,
+        to: queryMenu
+      )
+      addQueryItem(
+        parent.localizedText("Not equal to this value"),
+        action: .notEqual,
+        row: row,
+        column: column,
+        enabled: supportsLiteral,
+        to: queryMenu
+      )
+      queryMenu.addItem(.separator())
+      addQueryItem(
+        parent.localizedText("Contains this value"),
+        action: .contains,
+        row: row,
+        column: column,
+        enabled: supportsTextSearch,
+        to: queryMenu
+      )
+      addQueryItem(
+        parent.localizedText("Starts with this value"),
+        action: .startsWith,
+        row: row,
+        column: column,
+        enabled: supportsTextSearch,
+        to: queryMenu
+      )
+      addQueryItem(
+        parent.localizedText("Ends with this value"),
+        action: .endsWith,
+        row: row,
+        column: column,
+        enabled: supportsTextSearch,
+        to: queryMenu
+      )
+      queryMenu.addItem(.separator())
+      addQueryItem(
+        parent.localizedText("Column is NULL"),
+        action: .isNull,
+        row: row,
+        column: column,
+        enabled: true,
+        to: queryMenu
+      )
+      addQueryItem(
+        parent.localizedText("Column is not NULL"),
+        action: .isNotNull,
+        row: row,
+        column: column,
+        enabled: true,
+        to: queryMenu
+      )
+      queryItem.submenu = queryMenu
+      menu.addItem(queryItem)
+
+      menu.addItem(.separator())
+      addQueryItem(
+        parent.localizedText("Generate DELETE for matching rows"),
+        action: .deleteMatching,
+        row: row,
+        column: column,
+        enabled: supportsLiteral && parent.canGenerateDeleteQuery,
+        to: menu
+      )
+      return menu
+    }
+
+    @objc private func copyContextCell(_ sender: NSMenuItem) {
+      guard let location = cellLocation(from: sender),
+        parent.table.rows.indices.contains(location.row),
+        parent.table.rows[location.row].indices.contains(location.column)
+      else { return }
+      let value = parent.table.rows[location.row][location.column]
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.setString(
+        value.displayValue(in: parent.displayTimeZone),
+        forType: .string
+      )
+    }
+
+    @objc private func generateQuery(_ sender: NSMenuItem) {
+      guard let location = cellLocation(from: sender),
+        let action = ResultCellQueryAction(rawValue: sender.tag)
+      else { return }
+      parent.onGenerateQuery(location.row, location.column, action)
+    }
+
+    private func addQueryItem(
+      _ title: String,
+      action: ResultCellQueryAction,
+      row: Int,
+      column: Int,
+      enabled: Bool,
+      to menu: NSMenu
+    ) {
+      let menuItem = item(
+        title,
+        action: #selector(generateQuery(_:)),
+        row: row,
+        column: column
+      )
+      menuItem.tag = action.rawValue
+      menuItem.isEnabled = enabled
+      menu.addItem(menuItem)
+    }
+
+    private func item(
+      _ title: String,
+      action: Selector,
+      row: Int,
+      column: Int
+    ) -> NSMenuItem {
+      let menuItem = NSMenuItem(title: title, action: action, keyEquivalent: "")
+      menuItem.target = self
+      menuItem.representedObject = [row, column]
+      return menuItem
+    }
+
+    private func cellLocation(from menuItem: NSMenuItem) -> (row: Int, column: Int)? {
+      guard let location = menuItem.representedObject as? [Int], location.count == 2 else {
+        return nil
+      }
+      return (location[0], location[1])
+    }
+
     private func isNumeric(_ value: QueryCellValue) -> Bool {
       switch value {
       case .integer, .decimal: true
@@ -184,6 +360,22 @@ struct ResultTableView: NSViewRepresentable {
       ])
       return cell
     }
+  }
+}
+
+@MainActor
+private final class ResultContextMenuTableView: NSTableView {
+  var contextMenuProvider: ((Int, Int) -> NSMenu?)?
+
+  override func menu(for event: NSEvent) -> NSMenu? {
+    let location = convert(event.locationInWindow, from: nil)
+    let row = row(at: location)
+    let column = column(at: location)
+    guard row >= 0, column >= 0 else { return super.menu(for: event) }
+    if !selectedRowIndexes.contains(row) {
+      selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+    return contextMenuProvider?(row, column) ?? super.menu(for: event)
   }
 }
 

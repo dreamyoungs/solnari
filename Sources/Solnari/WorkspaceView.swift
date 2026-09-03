@@ -577,6 +577,16 @@ private struct ResultsPane: View {
     ResultTableView(
       table: model.queryTable,
       displayTimeZone: settings.displayTimeZone,
+      sourceObject: model.querySourceObject,
+      canGenerateDeleteQuery: model.canGenerateDeleteQueryFromResult,
+      localizedText: settings.text,
+      onGenerateQuery: { row, column, action in
+        model.generateQueryFromResultCell(
+          rowIndex: row,
+          columnIndex: column,
+          action: action
+        )
+      },
       columnWidths: $columnWidths
     )
     .overlay {
