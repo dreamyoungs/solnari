@@ -5,6 +5,12 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.2.1 source preview] - 2026-09-03
+
+### Fixed
+
+- Clicking the Dock icon now recreates the main window after all Solnari windows have been closed.
+
 ## [0.2.0 source preview] - 2026-09-01
 
 ### Added
@@ -46,6 +52,7 @@ All notable changes to Solnari are documented here. The project follows
 - Table data editing, query cancellation, organization-managed policies, and full orphan recovery
   remain in progress.
 
-[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.2.1...HEAD
+[0.2.1 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.1
 [0.2.0 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.0
 [0.1.0 source preview]: https://github.com/dreamyoungs/solnari/commit/58d29f68ec57cbb2bffcc1c2685f27a9b21a8a72

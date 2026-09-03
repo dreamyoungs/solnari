@@ -106,8 +106,9 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
     _ sender: NSApplication,
     hasVisibleWindows flag: Bool
   ) -> Bool {
-    showMainWindow()
-    return false
+    // A closed SwiftUI WindowGroup no longer has an NSWindow to bring forward.
+    // Let SwiftUI handle that case so it can create a new main window.
+    return !showMainWindow()
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -142,11 +143,14 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
     environment.mcpAccess.resumeIfNeeded()
   }
 
-  private func showMainWindow() {
+  @discardableResult
+  private func showMainWindow() -> Bool {
     NSApp.activate(ignoringOtherApps: true)
-    if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
-      window.makeKeyAndOrderFront(nil)
+    guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else {
+      return false
     }
+    window.makeKeyAndOrderFront(nil)
+    return true
   }
 
   private func activateExistingApplication() {
