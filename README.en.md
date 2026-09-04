@@ -146,16 +146,20 @@ Download `Solnari-0.2.1-macos-arm64-unsigned.dmg` from the
 open-source preview was created without Apple Developer Program membership. It is ad-hoc signed
 and has not been notarized by Apple. Approve its first launch on an Apple silicon Mac as follows:
 
+![Solnari DMG with the app ready to drag into Applications](docs/images/install/dmg-install.png)
+
 1. Open the DMG and copy `Solnari.app` to **Applications**.
 2. Launch Solnari once from Applications, then click **Done** in the macOS warning.
 3. Open **System Settings → Privacy & Security** and scroll all the way down to **Security**.
 4. Next to the message that Solnari was blocked to protect your Mac, click **Open Anyway**.
-5. Authenticate with your password or Touch ID, then click **Open Anyway** again.
+5. Authenticate with your password or Touch ID, then click **Open Anyway** in the final
+   confirmation. Some macOS versions label this button **Open**.
 
 This approval is required only once for that app. The **Open Anyway** entry remains available for
 about one hour after the launch attempt. See Apple's
 [official security-override instructions](https://support.apple.com/guide/mac-help/mh40617/mac)
-for additional context.
+for additional context. See the [illustrated unsigned-DMG guide](docs/install-unsigned-macos.en.md)
+for screenshots and checksum verification.
 
 If you do not want to approve a security exception, or prefer to inspect the complete build
 process instead of using a distributed binary, use **Build from source** below. When project use

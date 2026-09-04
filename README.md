@@ -157,17 +157,21 @@ Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리�
 Program에 가입하지 않고 만든 무료 오픈소스 preview라서 ad-hoc 서명되어 있고 Apple의
 notarization을 받지 않았습니다. Apple Silicon Mac에서 다음 순서로 최초 실행을 승인합니다.
 
+![Solnari 앱을 Applications 폴더로 드래그하는 DMG 설치 화면](docs/images/install/dmg-install.png)
+
 1. DMG를 열고 `Solnari.app`을 **응용 프로그램** 폴더로 복사합니다.
 2. 응용 프로그램 폴더의 Solnari를 한 번 실행하고 macOS 경고창에서 **완료**를 누릅니다.
 3. **시스템 설정 → 개인정보 보호 및 보안**을 열고 화면 맨 아래 **보안** 영역까지
    스크롤합니다.
 4. “Mac을 보호하기 위해 ‘Solnari’을(를) 차단했습니다” 옆의 **그래도 열기**를 누릅니다.
-5. 암호 또는 Touch ID로 승인한 뒤 다시 나타나는 창에서 **그래도 열기**를 선택합니다.
+5. 암호 또는 Touch ID로 승인한 뒤 다시 나타나는 확인창에서 **그래도 열기**를 선택합니다.
+   macOS 버전에 따라 이 버튼이 **열기**로 표시될 수 있습니다.
 
 이 승인은 해당 앱에 한 번만 필요합니다. **그래도 열기** 항목은 실행을 시도한 뒤 약 한 시간
 동안 표시됩니다. 자세한 배경과 Apple의 공식 절차는
 [Apple의 보안 설정을 재정의하여 앱 열기](https://support.apple.com/guide/mac-help/mh40617/mac)를
-참고해 주세요.
+참고해 주세요. 화면별 설명과 checksum 확인 방법은
+[unsigned DMG 최초 실행 안내](docs/install-unsigned-macos.ko.md)에 정리했습니다.
 
 보안 예외를 승인하고 싶지 않거나 배포 파일 대신 전체 build 과정을 직접 확인하고 싶다면
 아래의 **소스에서 직접 빌드하기**를 이용할 수 있습니다. 프로젝트 사용과 GitHub Stars가
