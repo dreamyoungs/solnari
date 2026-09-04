@@ -13,6 +13,8 @@ final class WorkspaceModel: ObservableObject {
   @Published var isAssistantVisible = true
   @Published var showNewConnection = false
   @Published private(set) var editingConnectionID: UUID?
+  @Published private(set) var presentedConnectionDraft: ConnectionDraft?
+  @Published private(set) var newConnectionProfileID: UUID?
   @Published var presentedError: String?
   @Published var presentedSchemaObject: SchemaObject?
   @Published private(set) var areConnectionOperationsSuspended = false
@@ -199,17 +201,35 @@ final class WorkspaceModel: ObservableObject {
 
   func beginNewConnection() {
     editingConnectionID = nil
+    presentedConnectionDraft = nil
+    newConnectionProfileID = UUID()
     showNewConnection = true
   }
 
   func beginEditingConnection(_ profileID: UUID) {
     guard connections.contains(where: { $0.id == profileID }) else { return }
     editingConnectionID = profileID
+    presentedConnectionDraft = nil
+    newConnectionProfileID = nil
+    showNewConnection = true
+  }
+
+  func beginDuplicatingConnection(_ profileID: UUID, copySuffix: String = "Copy") {
+    guard let profile = connections.first(where: { $0.id == profileID }) else { return }
+    editingConnectionID = nil
+    presentedConnectionDraft = ConnectionDraft(
+      duplicating: profile,
+      existingNames: connections.map(\.name),
+      copySuffix: copySuffix
+    )
+    newConnectionProfileID = UUID()
     showNewConnection = true
   }
 
   func finishConnectionPresentation() {
     editingConnectionID = nil
+    presentedConnectionDraft = nil
+    newConnectionProfileID = nil
   }
 
   func testConnection(
@@ -224,7 +244,8 @@ final class WorkspaceModel: ObservableObject {
 
   func saveAndConnect(
     _ draft: ConnectionDraft,
-    replacing profileID: UUID? = nil
+    replacing profileID: UUID? = nil,
+    creating newProfileID: UUID? = nil
   ) async throws {
     guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
     let originalConnections = connections
@@ -232,7 +253,7 @@ final class WorkspaceModel: ObservableObject {
     let originalWorkspaces = connectionWorkspaces
     let existingPassword = try profileID.flatMap { try passwordStore.password(for: $0) }
     let password = try resolvedPassword(for: draft, replacing: profileID)
-    var profile = try draft.makeProfile(id: profileID ?? UUID())
+    var profile = try draft.makeProfile(id: profileID ?? newProfileID ?? UUID())
 
     do {
       let metadata = try await backend.connect(profile: profile, password: password)

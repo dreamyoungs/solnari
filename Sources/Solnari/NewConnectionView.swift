@@ -6,6 +6,7 @@ struct NewConnectionView: View {
   @EnvironmentObject private var settings: AppSettings
   @Environment(\.dismiss) private var dismiss
   private let existingProfileID: UUID?
+  private let newProfileID: UUID?
   @State private var draft: ConnectionDraft
   @State private var testState: TestState = .idle
   @State private var connectionTestTask: Task<Void, Never>?
@@ -21,10 +22,15 @@ struct NewConnectionView: View {
   private static let googleCloudIdentityResolver = GoogleCloudIdentityResolver()
   private static let cloudSQLDiscoveryService = GoogleCloudSQLDiscoveryService()
 
-  init(profile: ConnectionProfile? = nil) {
+  init(
+    profile: ConnectionProfile? = nil,
+    draft: ConnectionDraft? = nil,
+    newProfileID: UUID? = nil
+  ) {
     existingProfileID = profile?.id
+    self.newProfileID = profile == nil ? newProfileID : nil
     _draft = State(
-      initialValue: profile.map { ConnectionDraft(profile: $0) } ?? ConnectionDraft())
+      initialValue: draft ?? profile.map { ConnectionDraft(profile: $0) } ?? ConnectionDraft())
   }
 
   private enum FocusedField: Hashable {
@@ -860,7 +866,11 @@ struct NewConnectionView: View {
           let savedDraft = draft
           testState = .saving
           do {
-            try await model.saveAndConnect(savedDraft, replacing: existingProfileID)
+            try await model.saveAndConnect(
+              savedDraft,
+              replacing: existingProfileID,
+              creating: newProfileID
+            )
             dismiss()
           } catch {
             testState = .failure(error.localizedDescription)

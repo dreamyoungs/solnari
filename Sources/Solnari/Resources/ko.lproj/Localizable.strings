@@ -13,6 +13,8 @@
 "View source on GitHub" = "GitHub에서 소스 보기";
 "Copyright © 2026 Solnari contributors." = "Copyright © 2026 Solnari 기여자.";
 "Copy" = "복사";
+"Duplicate…" = "복제…";
+"Connection copy suffix" = "복사본";
 "This license file is unavailable in this development build." = "이 개발 빌드에서는 라이선스 파일을 찾을 수 없습니다.";
 "License texts are included with every distributed app." = "라이선스 전문은 모든 배포용 앱에 함께 포함됩니다.";
 "MCP access" = "MCP 접근";

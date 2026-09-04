@@ -593,6 +593,20 @@ struct ConnectionDraft: Equatable, Sendable {
     accessLevel = profile.effectiveAccessLevel
   }
 
+  init(
+    duplicating profile: ConnectionProfile,
+    existingNames: [String],
+    copySuffix: String = "Copy"
+  ) {
+    self.init(profile: profile)
+    name = Self.availableCopyName(
+      for: profile.name,
+      existingNames: existingNames,
+      copySuffix: copySuffix
+    )
+    password = ""
+  }
+
   var supportsSelectedTransport: Bool {
     engine != .sqlite || transport == .direct
   }
@@ -745,6 +759,38 @@ struct ConnectionDraft: Equatable, Sendable {
       of: #"^[a-z]+(?:-[a-z0-9]+)+[0-9]$"#,
       options: .regularExpression
     ) != nil
+  }
+
+  private static func availableCopyName(
+    for originalName: String,
+    existingNames: [String],
+    copySuffix: String
+  ) -> String {
+    let baseName = originalName.trimmed
+    let suffix = copySuffix.trimmed.isEmpty ? "Copy" : copySuffix.trimmed
+    let copyBase = "\(baseName) \(suffix)"
+    let comparisonLocale = Locale(identifier: "en_US_POSIX")
+    let occupiedNames = Set(
+      existingNames.map {
+        $0.folding(
+          options: [.caseInsensitive, .diacriticInsensitive],
+          locale: comparisonLocale
+        )
+      }
+    )
+
+    var candidate = copyBase
+    var copyNumber = 2
+    while occupiedNames.contains(
+      candidate.folding(
+        options: [.caseInsensitive, .diacriticInsensitive],
+        locale: comparisonLocale
+      )
+    ) {
+      candidate = "\(copyBase) \(copyNumber)"
+      copyNumber += 1
+    }
+    return candidate
   }
 }
 

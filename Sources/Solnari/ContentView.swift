@@ -49,8 +49,12 @@ struct ContentView: View {
       isPresented: $model.showNewConnection,
       onDismiss: { model.finishConnectionPresentation() }
     ) {
-      NewConnectionView(profile: model.editingConnection)
-        .environmentObject(model)
+      NewConnectionView(
+        profile: model.editingConnection,
+        draft: model.presentedConnectionDraft,
+        newProfileID: model.newConnectionProfileID
+      )
+      .environmentObject(model)
     }
     .sheet(item: $model.presentedSchemaObject) { object in
       SchemaInspectorView(object: object)

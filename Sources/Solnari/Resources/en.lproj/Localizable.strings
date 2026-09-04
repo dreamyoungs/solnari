@@ -36,6 +36,8 @@
 "The connection test timed out. Check the address and path." = "The connection test timed out. Check the address and path.";
 "The connection test was cancelled." = "The connection test was cancelled.";
 "Copy" = "Copy";
+"Duplicate…" = "Duplicate…";
+"Connection copy suffix" = "Copy";
 "This license file is unavailable in this development build." = "This license file is unavailable in this development build.";
 "License texts are included with every distributed app." = "License texts are included with every distributed app.";
 "MCP access" = "MCP access";

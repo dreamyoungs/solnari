@@ -30,6 +30,12 @@ struct SidebarView: View {
               connection: connection,
               onConnect: { Task { await model.connect(profileID: connection.id) } },
               onEdit: { model.beginEditingConnection(connection.id) },
+              onDuplicate: {
+                model.beginDuplicatingConnection(
+                  connection.id,
+                  copySuffix: settings.text("Connection copy suffix")
+                )
+              },
               onRemove: { connectionPendingRemoval = connection }
             )
             .tag(connection.id)
@@ -39,6 +45,12 @@ struct SidebarView: View {
               }
               Button(settings.text("Edit…")) {
                 model.beginEditingConnection(connection.id)
+              }
+              Button(settings.text("Duplicate…")) {
+                model.beginDuplicatingConnection(
+                  connection.id,
+                  copySuffix: settings.text("Connection copy suffix")
+                )
               }
               Divider()
               Button(settings.text("Remove"), role: .destructive) {
@@ -269,6 +281,7 @@ private struct ConnectionRow: View {
   let connection: ConnectionProfile
   let onConnect: () -> Void
   let onEdit: () -> Void
+  let onDuplicate: () -> Void
   let onRemove: () -> Void
 
   var body: some View {
@@ -302,6 +315,7 @@ private struct ConnectionRow: View {
       Menu {
         Button(settings.text("Connect"), action: onConnect)
         Button(settings.text("Edit…"), action: onEdit)
+        Button(settings.text("Duplicate…"), action: onDuplicate)
         Divider()
         Button(settings.text("Remove"), role: .destructive, action: onRemove)
       } label: {
