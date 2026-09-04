@@ -156,8 +156,7 @@ struct SidebarView: View {
       }
     } label: {
       HStack(spacing: 7) {
-        Image(systemName: "cylinder")
-          .foregroundStyle(connection.engine.tint)
+        DatabaseEngineBadge(engine: connection.engine, size: .inline)
         Text(connection.database)
           .fontWeight(.medium)
         Spacer()
@@ -286,14 +285,7 @@ private struct ConnectionRow: View {
   var body: some View {
     HStack(spacing: 10) {
       ZStack(alignment: .bottomTrailing) {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-          .fill(connection.engine.tint.opacity(0.12))
-          .frame(width: 31, height: 31)
-          .overlay {
-            Image(systemName: connection.engine.symbol)
-              .font(.system(size: 14, weight: .medium))
-              .foregroundStyle(connection.engine.tint)
-          }
+        DatabaseEngineBadge(engine: connection.engine, size: .sidebar)
         StatusDot(color: connection.status.color, size: 6)
           .background(SolnariTheme.sidebar, in: Circle())
       }

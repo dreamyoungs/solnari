@@ -8,11 +8,19 @@ enum DatabaseEngine: String, CaseIterable, Identifiable, Hashable, Codable, Send
 
   var id: String { rawValue }
 
-  var symbol: String {
+  var badgeText: String {
     switch self {
-    case .postgresql: "cylinder.split.1x2"
-    case .mysql: "cylinder"
-    case .sqlite: "doc.badge.gearshape"
+    case .postgresql: "PG"
+    case .mysql: "MY"
+    case .sqlite: "SQ"
+    }
+  }
+
+  var badgeAssetName: String {
+    switch self {
+    case .postgresql: "DatabaseEnginePostgreSQL"
+    case .mysql: "DatabaseEngineMySQL"
+    case .sqlite: "DatabaseEngineSQLite"
     }
   }
 

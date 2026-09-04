@@ -61,9 +61,7 @@ struct WorkspaceView: View {
             .foregroundStyle(.secondary)
         }
 
-        PillLabel(
-          connection.engine.rawValue, symbol: connection.engine.symbol, tint: connection.engine.tint
-        )
+        DatabaseEnginePill(engine: connection.engine)
         PillLabel(connection.transport.rawValue, symbol: connection.transport.symbol)
         PillLabel(
           connection.effectiveSecurityPolicy.rawValue,

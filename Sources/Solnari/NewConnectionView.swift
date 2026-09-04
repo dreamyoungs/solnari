@@ -37,6 +37,17 @@ struct NewConnectionView: View {
     case connectionName
   }
 
+  private enum TransportGuideNode {
+    case symbol(String, String)
+    case engine(DatabaseEngine, String)
+
+    var title: String {
+      switch self {
+      case .symbol(_, let title), .engine(_, let title): title
+      }
+    }
+  }
+
   enum TestState: Equatable {
     case idle
     case testing
@@ -186,7 +197,12 @@ struct NewConnectionView: View {
           fieldLabel("Engine")
           Picker("", selection: $draft.engine) {
             ForEach(DatabaseEngine.allCases) { engine in
-              Label(settings.text(engine.rawValue), systemImage: engine.symbol).tag(engine)
+              HStack(spacing: 7) {
+                DatabaseEngineBadge(engine: engine, size: .picker)
+                  .accessibilityHidden(true)
+                Text(settings.text(engine.rawValue))
+              }
+              .tag(engine)
             }
           }
           .labelsHidden()
@@ -645,11 +661,7 @@ struct NewConnectionView: View {
       HStack(spacing: 0) {
         ForEach(Array(transportGuideNodes.enumerated()), id: \.offset) { index, node in
           VStack(spacing: 6) {
-            Image(systemName: node.symbol)
-              .font(.system(size: 15, weight: .semibold))
-              .foregroundStyle(SolnariTheme.indigo)
-              .frame(width: 34, height: 34)
-              .background(SolnariTheme.indigo.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+            transportGuideIcon(node)
             Text(settings.text(node.title))
               .font(.system(size: 10, weight: .medium))
               .multilineTextAlignment(.center)
@@ -685,35 +697,54 @@ struct NewConnectionView: View {
     .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(SolnariTheme.border))
   }
 
-  private var transportGuideNodes: [(symbol: String, title: String)] {
+  @ViewBuilder
+  private func transportGuideIcon(_ node: TransportGuideNode) -> some View {
+    switch node {
+    case .symbol(let symbol, _):
+      Image(systemName: symbol)
+        .font(.system(size: 15, weight: .semibold))
+        .foregroundStyle(SolnariTheme.indigo)
+        .frame(width: 34, height: 34)
+        .background(SolnariTheme.indigo.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+    case .engine(let engine, _):
+      DatabaseEngineBadge(engine: engine, size: .guide)
+    }
+  }
+
+  private var transportGuideNodes: [TransportGuideNode] {
     switch draft.transport {
     case .direct:
       draft.engine == .sqlite
-        ? [("laptopcomputer", "This Mac"), ("doc.badge.gearshape", "SQLite database file")]
+        ? [.symbol("laptopcomputer", "This Mac"), .engine(.sqlite, "SQLite database file")]
         : [
-          ("laptopcomputer", "This Mac"), ("network", "Private or public network"),
-          (draft.engine.symbol, "Database"),
+          .symbol("laptopcomputer", "This Mac"),
+          .symbol("network", "Private or public network"),
+          .engine(draft.engine, "Database"),
         ]
     case .cloudSQL:
       [
-        ("laptopcomputer", "This Mac"), ("shield.lefthalf.filled", "Cloud SQL Connector"),
-        ("cloud.fill", "Cloud SQL instance"),
+        .symbol("laptopcomputer", "This Mac"),
+        .symbol("shield.lefthalf.filled", "Cloud SQL Connector"),
+        .symbol("cloud.fill", "Cloud SQL instance"),
       ]
     case .ssh:
       [
-        ("laptopcomputer", "This Mac"), ("lock.shield.fill", "SSH bastion"),
-        (draft.engine.symbol, "Private database"),
+        .symbol("laptopcomputer", "This Mac"),
+        .symbol("lock.shield.fill", "SSH bastion"),
+        .engine(draft.engine, "Private database"),
       ]
     case .kubernetes:
       draft.kubernetesMode == .existingResource
         ? [
-          ("laptopcomputer", "This Mac"), ("shippingbox.fill", "Kubernetes API"),
-          ("checkmark.shield.fill", "Existing resource"),
+          .symbol("laptopcomputer", "This Mac"),
+          .symbol("shippingbox.fill", "Kubernetes API"),
+          .symbol("checkmark.shield.fill", "Existing resource"),
         ]
         : [
-          ("laptopcomputer", "This Mac"), ("shippingbox.fill", "Kubernetes API"),
-          ("arrow.left.arrow.right.square", "Relay pod"),
-          (draft.engine.symbol, "Private database"),
+          .symbol("laptopcomputer", "This Mac"),
+          .symbol("shippingbox.fill", "Kubernetes API"),
+          .symbol("arrow.left.arrow.right.square", "Relay pod"),
+          .engine(draft.engine, "Private database"),
         ]
     }
   }

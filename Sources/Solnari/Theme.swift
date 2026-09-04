@@ -61,6 +61,119 @@ struct StatusDot: View {
   }
 }
 
+enum DatabaseEngineBadgeSize: CaseIterable, Sendable {
+  case inline
+  case picker
+  case sidebar
+  case guide
+
+  var width: CGFloat {
+    switch self {
+    case .inline: 24
+    case .picker: 28
+    case .sidebar: 31
+    case .guide: 34
+    }
+  }
+
+  var height: CGFloat {
+    switch self {
+    case .inline: 17
+    case .picker: 20
+    case .sidebar: 31
+    case .guide: 34
+    }
+  }
+
+}
+
+struct DatabaseEngineBadgeAppearance: Equatable, Sendable {
+  let increasedContrast: Bool
+  let differentiateWithoutColor: Bool
+
+  static let accessible = DatabaseEngineBadgeAppearance(
+    increasedContrast: true,
+    differentiateWithoutColor: true
+  )
+}
+
+struct DatabaseEngineBadge: View {
+  @Environment(\.colorSchemeContrast) private var contrast
+  @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+  @Environment(\.isEnabled) private var isEnabled
+
+  let engine: DatabaseEngine
+  var size: DatabaseEngineBadgeSize = .sidebar
+  var appearanceOverride: DatabaseEngineBadgeAppearance? = nil
+
+  @ViewBuilder
+  var body: some View {
+    Group {
+      if let badgeImage {
+        Image(nsImage: badgeImage)
+          .resizable()
+          .renderingMode(.original)
+          .interpolation(.high)
+          .antialiased(true)
+          .scaledToFit()
+      } else {
+        Text(engine.badgeText)
+          .font(.system(size: 10, weight: .bold, design: .rounded))
+          .foregroundStyle(.white)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .background(engine.tint, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+      }
+    }
+    .frame(width: size.width, height: size.height)
+    .contrast(usesAccessibleOutline ? 1.16 : 1)
+    .saturation(isEnabled ? 1 : 0.12)
+    .opacity(isEnabled ? 1 : 0.55)
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(engine.rawValue)
+  }
+
+  private var badgeImage: NSImage? {
+    guard
+      let url = SolnariResources.bundle.url(
+        forResource: engine.badgeAssetName,
+        withExtension: "png"
+      )
+    else {
+      return nil
+    }
+    return NSImage(contentsOf: url)
+  }
+
+  private var usesIncreasedContrast: Bool {
+    appearanceOverride?.increasedContrast ?? (contrast == .increased)
+  }
+
+  private var usesAccessibleOutline: Bool {
+    usesIncreasedContrast
+      || (appearanceOverride?.differentiateWithoutColor ?? differentiateWithoutColor)
+  }
+}
+
+struct DatabaseEnginePill: View {
+  @EnvironmentObject private var settings: AppSettings
+  let engine: DatabaseEngine
+
+  var body: some View {
+    HStack(spacing: 5) {
+      DatabaseEngineBadge(engine: engine, size: .inline)
+        .accessibilityHidden(true)
+      Text(settings.text(engine.rawValue))
+        .font(.system(size: 11, weight: .medium))
+    }
+    .foregroundStyle(engine.tint)
+    .padding(.trailing, 8)
+    .padding(.vertical, 3)
+    .background(engine.tint.opacity(0.09), in: Capsule())
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(engine.rawValue)
+  }
+}
+
 struct PillLabel: View {
   @EnvironmentObject private var settings: AppSettings
   let title: String

@@ -94,7 +94,7 @@ struct SchemaInspectorView: View {
       summaryItem(
         "Columns", value: "\(details?.columns.count ?? object.columnCount)", symbol: "list.number")
       if let connection = model.selectedConnection {
-        summaryItem("Engine", value: connection.engine.rawValue, symbol: connection.engine.symbol)
+        engineSummaryItem(connection.engine)
       }
       Spacer()
     }
@@ -126,6 +126,22 @@ struct SchemaInspectorView: View {
           .lineLimit(1)
       }
     }
+  }
+
+  private func engineSummaryItem(_ engine: DatabaseEngine) -> some View {
+    HStack(spacing: 7) {
+      DatabaseEngineBadge(engine: engine, size: .inline)
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(settings.text("Engine"))
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+        Text(settings.text(engine.rawValue))
+          .font(.caption.weight(.medium))
+      }
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(settings.text("Engine")): \(settings.text(engine.rawValue))")
   }
 
   private var tabPicker: some View {
