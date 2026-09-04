@@ -67,7 +67,7 @@ jobs:
             .build/app/release/Solnari.app \
             .build/release/Solnari-ci.dmg \
             "Solnari CI"
-          hdiutil verify .build/release/Solnari-ci.dmg
+          ./Scripts/verify-dmg.sh .build/release/Solnari-ci.dmg
 
       - name: Check patch whitespace
         run: git diff --check

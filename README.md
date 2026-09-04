@@ -242,6 +242,20 @@ Apple Developer Program 가입 없이 테스트용 DMG를 만들 수 있습니�
 
 결과는 `.build/release/Solnari-0.2.1-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
 GitHub Release의 preview와 동일하게 ad-hoc 서명 앱을 포함하며 notarization되지 않았습니다.
+생성 스크립트는 660×400 Finder 창, 앱과 응용 프로그램 바로가기의 고정 위치, Retina 배경,
+전용 볼륨 아이콘을 적용하고, 패키지 내용과 마운트·해제를 자동 검증합니다.
+
+DMG 디자인 원본은 [`Assets/DMG`](Assets/DMG)에 있습니다. 배경이나 볼륨 아이콘을 바꿀
+때에는 생성된 TIFF·ICNS를 직접 수정하지 말고 두 PNG 원본을 교체한 뒤 다음 명령으로 파생
+자산을 미리 확인합니다.
+
+```bash
+./Scripts/prepare-dmg-assets.sh .build/dmg-assets-preview
+```
+
+자세한 크기와 검증 절차는 [`Assets/DMG/README.md`](Assets/DMG/README.md)를 참고하세요.
+DMG 디자인은 설치 경로를 명확하게 보여주기 위한 것이며 코드 서명이나 notarization을
+대체하지 않습니다.
 
 ### 공식 Apple Silicon DMG 만들기
 

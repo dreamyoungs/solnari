@@ -228,6 +228,19 @@ Create a test DMG without Apple Developer Program membership:
 
 The output is `.build/release/Solnari-0.2.1-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
 GitHub Release preview, it contains an ad-hoc signed app and is not notarized.
+The workflow applies a fixed 660×400 Finder window, positioned app and Applications icons, a Retina
+background, and a custom volume icon, then verifies the contents and a clean mount/unmount cycle.
+
+Editable DMG artwork lives under [`Assets/DMG`](Assets/DMG). To change the background or volume
+icon, replace the two PNG sources instead of editing generated TIFF or ICNS files, then preview the
+derived assets with:
+
+```bash
+./Scripts/prepare-dmg-assets.sh .build/dmg-assets-preview
+```
+
+See [`Assets/DMG/README.md`](Assets/DMG/README.md) for dimensions and visual verification steps.
+The branded layout clarifies installation; it does not replace code signing or notarization.
 
 ### Build the official Apple silicon DMG
 

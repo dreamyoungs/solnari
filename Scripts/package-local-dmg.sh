@@ -32,7 +32,7 @@ mkdir -p "$release_directory"
   "$application_path" \
   "$dmg_path" \
   "Solnari $version"
-/usr/bin/hdiutil verify "$dmg_path"
+"$repository_root/Scripts/verify-dmg.sh" "$dmg_path" >/dev/null
 (
   cd "$release_directory"
   /usr/bin/shasum -a 256 "${dmg_path:t}" > "${checksum_path:t}"

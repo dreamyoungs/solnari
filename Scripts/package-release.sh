@@ -46,6 +46,7 @@ fi
   "$application_path" \
   "$dmg_path" \
   "Solnari $version"
+"$repository_root/Scripts/verify-dmg.sh" "$dmg_path" >/dev/null
 /usr/bin/codesign \
   --force \
   --sign "$signing_identity" \
