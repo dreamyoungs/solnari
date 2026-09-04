@@ -208,6 +208,7 @@ struct SolnariApp: App {
     Settings {
       SettingsView()
         .environmentObject(settings)
+        .environmentObject(workspace)
         .environmentObject(mcpAccess)
         .environment(\.locale, settings.locale)
     }

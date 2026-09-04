@@ -1,7 +1,12 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
   @EnvironmentObject private var settings: AppSettings
+  @EnvironmentObject private var workspace: WorkspaceModel
+  @State private var showExportConfirmation = false
+  @State private var transferNotice: ConnectionTransferNotice?
 
   var body: some View {
     TabView(selection: $settings.selectedSettingsTab) {
@@ -24,6 +29,29 @@ struct SettingsView: View {
         .tag(SettingsTab.about)
     }
     .frame(width: 580, height: 500)
+    .confirmationDialog(
+      settings.text("Export connection profiles?"),
+      isPresented: $showExportConfirmation,
+      titleVisibility: .visible
+    ) {
+      Button(settings.text("Export…")) {
+        exportConnectionProfiles()
+      }
+      Button(settings.text("Cancel"), role: .cancel) {}
+    } message: {
+      Text(
+        settings.text(
+          "Passwords, encryption keys, credential references, and tokens are never exported. The file still contains sensitive hosts, usernames, database names, and cloud, SSH, or Kubernetes settings. Store and share it carefully. Imported credential-based connections require password entry or IAM reauthentication."
+        )
+      )
+    }
+    .alert(item: $transferNotice) { notice in
+      Alert(
+        title: Text(notice.title),
+        message: Text(notice.message),
+        dismissButton: .default(Text(settings.text("OK")))
+      )
+    }
   }
 
   private var generalSettings: some View {
@@ -57,9 +85,139 @@ struct SettingsView: View {
         )
         .foregroundStyle(.secondary)
       }
+
+      Section {
+        HStack {
+          Text(
+            String(
+              format: settings.text("%d saved connection profiles"),
+              workspace.connections.count
+            )
+          )
+          .foregroundStyle(.secondary)
+
+          Spacer()
+
+          Button(settings.text("Import…")) {
+            importConnectionProfiles()
+          }
+
+          Button(settings.text("Export…")) {
+            showExportConfirmation = true
+          }
+          .disabled(workspace.connections.isEmpty)
+        }
+      } header: {
+        Text(settings.text("Connection profiles"))
+      } footer: {
+        Text(
+          settings.text(
+            "Transfer non-secret connection settings. Passwords and authentication credentials are never included."
+          )
+        )
+        .foregroundStyle(.secondary)
+      }
     }
     .formStyle(.grouped)
   }
+
+  private func exportConnectionProfiles() {
+    do {
+      let data = try workspace.exportConnectionProfiles()
+      let panel = NSSavePanel()
+      panel.title = settings.text("Save connection profiles")
+      panel.nameFieldStringValue = "Solnari Connections.json"
+      panel.allowedContentTypes = [.json]
+      panel.canCreateDirectories = true
+      guard panel.runModal() == .OK, let url = panel.url else { return }
+
+      try data.write(to: url, options: .atomic)
+      try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+      transferNotice = ConnectionTransferNotice(
+        title: settings.text("Export complete"),
+        message: String(
+          format: settings.text("Exported %d connection profiles without credentials."),
+          workspace.connections.count
+        )
+      )
+    } catch {
+      transferNotice = ConnectionTransferNotice(
+        title: settings.text("Export failed"),
+        message: localizedTransferError(error)
+      )
+    }
+  }
+
+  private func importConnectionProfiles() {
+    let panel = NSOpenPanel()
+    panel.title = settings.text("Choose connection profile file")
+    panel.allowedContentTypes = [.json]
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+
+    do {
+      let data = try Data(contentsOf: url, options: .mappedIfSafe)
+      let summary = try workspace.importConnectionProfiles(data)
+      transferNotice = ConnectionTransferNotice(
+        title: settings.text("Import complete"),
+        message: String(
+          format: settings.text(
+            "Imported %d connection profiles. %d names were adjusted to avoid conflicts. Credential-based connections require password entry or IAM reauthentication."
+          ),
+          summary.importedCount,
+          summary.renamedCount
+        )
+      )
+    } catch {
+      transferNotice = ConnectionTransferNotice(
+        title: settings.text("Import failed"),
+        message: localizedTransferError(error)
+      )
+    }
+  }
+
+  private func localizedTransferError(_ error: Error) -> String {
+    guard let transferError = error as? ConnectionProfileTransferError else {
+      return error.localizedDescription
+    }
+    switch transferError {
+    case .documentTooLarge:
+      return settings.text("The connection profile file is larger than the 5 MB limit.")
+    case .invalidDocument:
+      return settings.text(
+        "The selected file is not a valid Solnari connection profile document.")
+    case .invalidFormat:
+      return settings.text(
+        "The selected JSON file is not a Solnari connection profile document.")
+    case .unsupportedVersion(let version):
+      return String(
+        format: settings.text("Connection profile format version %d is not supported."),
+        version
+      )
+    case .tooManyConnections:
+      return settings.text("A connection profile file can contain at most 1,000 connections.")
+    case .unknownFields(let context, let fields):
+      return String(
+        format: settings.text("Unsupported fields in %@: %@."),
+        context,
+        fields.joined(separator: ", ")
+      )
+    case .invalidConnection(let index, let reason):
+      return String(
+        format: settings.text("Connection %d is invalid: %@"),
+        index + 1,
+        settings.text(reason)
+      )
+    }
+  }
+}
+
+private struct ConnectionTransferNotice: Identifiable {
+  let id = UUID()
+  let title: String
+  let message: String
 }
 
 private struct AboutSettingsView: View {

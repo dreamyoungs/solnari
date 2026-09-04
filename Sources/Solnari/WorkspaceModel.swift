@@ -232,6 +232,42 @@ final class WorkspaceModel: ObservableObject {
     newConnectionProfileID = nil
   }
 
+  func exportConnectionProfiles() throws -> Data {
+    try ConnectionProfileTransferService.encode(connections)
+  }
+
+  @discardableResult
+  func importConnectionProfiles(_ data: Data) throws -> ConnectionProfileImportSummary {
+    var importedProfiles = try ConnectionProfileTransferService.decode(data)
+    var occupiedNames = Set(connections.map { Self.comparableConnectionName($0.name) })
+    var renamedCount = 0
+
+    for index in importedProfiles.indices {
+      let originalName = importedProfiles[index].name
+      let availableName = Self.availableImportedConnectionName(
+        originalName,
+        occupiedNames: occupiedNames
+      )
+      if availableName != originalName {
+        renamedCount += 1
+      }
+      importedProfiles[index].name = availableName
+      occupiedNames.insert(Self.comparableConnectionName(availableName))
+    }
+
+    let updatedConnections = connections + importedProfiles
+    try profileStore.save(updatedConnections)
+    connections = updatedConnections
+    for profile in importedProfiles {
+      ensureWorkspace(for: profile.id)
+    }
+
+    return ConnectionProfileImportSummary(
+      importedCount: importedProfiles.count,
+      renamedCount: renamedCount
+    )
+  }
+
   func testConnection(
     _ draft: ConnectionDraft,
     replacing profileID: UUID? = nil
@@ -678,5 +714,27 @@ final class WorkspaceModel: ObservableObject {
     profile.serverVersion = metadata.serverVersion
     profile.serverEncoding = metadata.serverEncoding
     profile.serverTimeZone = metadata.serverTimeZone
+  }
+
+  private static func availableImportedConnectionName(
+    _ preferredName: String,
+    occupiedNames: Set<String>
+  ) -> String {
+    guard occupiedNames.contains(comparableConnectionName(preferredName)) else {
+      return preferredName
+    }
+
+    var sequence = 2
+    while occupiedNames.contains(comparableConnectionName("\(preferredName) \(sequence)")) {
+      sequence += 1
+    }
+    return "\(preferredName) \(sequence)"
+  }
+
+  private static func comparableConnectionName(_ name: String) -> String {
+    name.folding(
+      options: [.caseInsensitive, .diacriticInsensitive],
+      locale: Locale(identifier: "en_US_POSIX")
+    )
   }
 }

@@ -63,6 +63,7 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - Direct TCP, Google 공식 Cloud SQL Connector, SSH tunnel, Kubernetes 기존 리소스·임시 relay 경로
 - ADC 기반 Cloud SQL 자동 IAM 인증, 엔진별 IAM DB 사용자명 제안, 프로젝트 리소스 조회
 - 저장된 연결의 편집·재연결과 확인 절차가 있는 삭제
+- 비밀번호와 인증 정보를 제외하는 버전형 JSON 연결 프로필 가져오기·내보내기
 - 로컬 연결 정의와 AES-GCM으로 암호화한 사용자 전용 credential vault
 - 다중 탭 SQL editor와 크기 조절 가능한 editor/result layout
 - 드래그·경계선 더블클릭 컬럼 맞춤과 다중 행 선택을 지원하는 AppKit 기반 결과 grid
@@ -111,6 +112,7 @@ Pod 생성·삭제 권한이 추가로 필요합니다.
 
 자세한 현재 구조와 보안 목표는 [Backend architecture](docs/backend-architecture.md),
 [Connection paths](docs/connection-paths.md),
+[연결 프로필 전송 형식](docs/connection-profile-transfer.md),
 [외부 Agent용 MCP 접근](docs/mcp-access.ko.md),
 [보안 우선 연결 아키텍처](docs/security-first-connection-architecture.ko.md),
 [위협 모델](docs/threat-model.ko.md)을 참고해 주세요.

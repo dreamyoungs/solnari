@@ -63,6 +63,7 @@ Solnari now aims to be:
 - Direct TCP, Google's official Cloud SQL Connector, SSH tunnel, and existing-resource or relay Kubernetes paths
 - ADC-based Cloud SQL automatic IAM authentication, engine-aware user suggestions, and project discovery
 - Saved-connection editing and reconnecting, with confirmation before deletion
+- Versioned JSON connection-profile import/export that excludes passwords and authentication credentials
 - Local connection definitions and a user-only AES-GCM credential vault
 - Multi-tab SQL editor and resizable editor/result layout
 - AppKit result grid with drag resizing, divider double-click fitting, and multi-row selection
@@ -102,6 +103,7 @@ approved targets and execution policies when required.
 
 See the [backend architecture](docs/backend-architecture.md),
 [connection paths](docs/connection-paths.md),
+[connection profile transfer format](docs/connection-profile-transfer.md),
 [external-agent MCP access](docs/mcp-access.ko.md),
 [security-first connection architecture](docs/security-first-connection-architecture.ko.md), and
 [threat model](docs/threat-model.ko.md).
