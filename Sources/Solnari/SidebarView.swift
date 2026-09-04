@@ -4,7 +4,6 @@ import SwiftUI
 struct SidebarView: View {
   @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
-  @Environment(\.openSettings) private var openSettings
   @State private var searchText = ""
   @State private var schemasExpanded = true
   @State private var schemaExpansion: [String: Bool] = [:]
@@ -262,13 +261,13 @@ struct SidebarView: View {
           .foregroundStyle(.secondary)
       }
       Spacer()
-      Button {
-        openSettings()
-      } label: {
+      OpenSolnariSettingsButton(settings: settings) {
         Image(systemName: "gearshape")
       }
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)
+      .help(settings.text("Open Settings"))
+      .accessibilityLabel(settings.text("Open Settings"))
     }
     .padding(12)
     .background(SolnariTheme.sidebarElevated)

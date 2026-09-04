@@ -3,12 +3,27 @@ import SwiftUI
 
 private struct AboutSettingsMenuItem: View {
   @ObservedObject var settings: AppSettings
-  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
-    Button(settings.text("About Solnari")) {
-      settings.selectedSettingsTab = .about
-      openSettings()
+    OpenSolnariSettingsButton(settings: settings, destination: .about) {
+      Label(settings.text("About Solnari"), systemImage: "info.circle")
+    }
+  }
+}
+
+private struct SettingsDestinationMenuItems: View {
+  @ObservedObject var settings: AppSettings
+
+  var body: some View {
+    OpenSolnariSettingsButton(settings: settings, destination: .connectionProfiles) {
+      Label(settings.text("Import / Export…"), systemImage: "arrow.up.arrow.down.circle")
+    }
+
+    OpenSolnariSettingsButton(settings: settings, destination: .mcp) {
+      Label(
+        settings.text("MCP Access…"),
+        systemImage: "point.3.connected.trianglepath.dotted"
+      )
     }
   }
 }
@@ -182,6 +197,10 @@ struct SolnariApp: App {
     .commands {
       CommandGroup(replacing: .appInfo) {
         AboutSettingsMenuItem(settings: settings)
+      }
+
+      CommandGroup(after: .appSettings) {
+        SettingsDestinationMenuItems(settings: settings)
       }
 
       CommandGroup(replacing: .newItem) {

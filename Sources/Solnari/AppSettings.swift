@@ -34,6 +34,21 @@ enum SettingsTab: Hashable {
   case about
 }
 
+enum SettingsDestination: Hashable, Sendable {
+  case general
+  case connectionProfiles
+  case mcp
+  case about
+
+  var tab: SettingsTab {
+    switch self {
+    case .general, .connectionProfiles: .general
+    case .mcp: .mcp
+    case .about: .about
+    }
+  }
+}
+
 @MainActor
 final class AppSettings: ObservableObject {
   private static let languageKey = "solnari.language"
@@ -75,6 +90,10 @@ final class AppSettings: ObservableObject {
     displayTimeZoneOption.timeZone
   }
 
+  func selectSettingsDestination(_ destination: SettingsDestination) {
+    selectedSettingsTab = destination.tab
+  }
+
   func text(_ key: String) -> String {
     let languageCode = effectiveLanguage.rawValue
     guard let path = SolnariResources.bundle.path(forResource: languageCode, ofType: "lproj"),
@@ -83,5 +102,33 @@ final class AppSettings: ObservableObject {
       return key
     }
     return bundle.localizedString(forKey: key, value: key, table: nil)
+  }
+}
+
+struct OpenSolnariSettingsButton<Label: View>: View {
+  @ObservedObject private var settings: AppSettings
+  @Environment(\.openSettings) private var openSettings
+  private let destination: SettingsDestination?
+  private let label: () -> Label
+
+  init(
+    settings: AppSettings,
+    destination: SettingsDestination? = nil,
+    @ViewBuilder label: @escaping () -> Label
+  ) {
+    self.settings = settings
+    self.destination = destination
+    self.label = label
+  }
+
+  var body: some View {
+    Button {
+      if let destination {
+        settings.selectSettingsDestination(destination)
+      }
+      openSettings()
+    } label: {
+      label()
+    }
   }
 }

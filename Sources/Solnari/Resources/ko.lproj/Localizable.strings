@@ -2,6 +2,9 @@
 "Follow System" = "시스템 설정 따르기";
 "Appearance" = "화면";
 "Settings" = "설정";
+"Open Settings" = "설정 열기";
+"Import / Export…" = "가져오기/내보내기…";
+"MCP Access…" = "MCP 접근…";
 "The interface updates immediately when you change the language." = "언어를 변경하면 인터페이스에 즉시 반영됩니다.";
 "Connection profiles" = "연결 프로필";
 "%d saved connection profiles" = "저장된 연결 프로필 %d개";
