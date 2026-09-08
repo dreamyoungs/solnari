@@ -1,3 +1,4 @@
+import { formatSQL } from "./sql-format.js";
 import { z } from "zod";
 import { DatabaseSessions } from "./database-sessions.js";
 import { GoogleCloudService } from "./google-cloud.js";
@@ -11,6 +12,8 @@ export class Router {
 
   async dispatch(request: RPCRequest): Promise<unknown> {
     switch (request.method) {
+      case "sql.format":
+        return formatSQL(request.params);
       case "system.ping":
         return { name: "solnari-backend", protocolVersion: 1 };
       case "cloud.identity":

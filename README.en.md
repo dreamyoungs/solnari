@@ -20,8 +20,8 @@
 </p>
 
 > [!NOTE]
-> The current version is a **0.2.1 Apple silicon preview**. An unsigned DMG is available from
-> [GitHub Releases](https://github.com/dreamyoungs/solnari/releases/tag/v0.2.1). Until the project
+> The current version is a **0.3.0 Apple silicon preview**. An unsigned DMG is available from
+> [GitHub Releases](https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0). Until the project
 > joins the Apple Developer Program, the app is not Developer ID-signed or notarized and requires
 > the one-time macOS approval described below.
 
@@ -75,7 +75,10 @@ Solnari now aims to be:
 - Single-instance lifecycle with session cleanup on quit, screen lock, sleep, and user switching
 - Conservative SQL preflight and database-session write protection for read-only profiles
 - An opt-in local MCP server exposing selected-connection metadata, schema, and a read-only query tool to external Codex clients
-- A Codex UI prototype with explicit proposal-to-editor handoff
+- [Non-analyzing query plans](docs/query-plans.md) without changing editor SQL
+- [Preview and pinned schema tabs](docs/schema-tabs.md)
+- [Local dialect-aware SQL formatting](docs/sql-formatting.md), selection mapping and undo
+- [Ephemeral Codex SQL assistant](docs/codex-privacy.md) with explicit context sharing and SQL review
 
 ### Connection matrix
 
@@ -132,7 +135,7 @@ also enforce that Cloud SQL cannot silently fall back to `gcloud` or an external
 - Idle/max session lifetime and orphan recovery after forced termination
 - A dialect-aware SQL parser, consistent timeouts, query cancellation, and result/export limits
 - Production write approval and one-time write capabilities
-- In-app Codex App Server integration
+- Broader authenticated Codex login and response end-to-end verification with a dedicated test account
 - MCP write capabilities with one-time human approval
 - GitHub Release automation and Intel Mac builds
 - Table data editing and broader object exploration
@@ -141,8 +144,8 @@ also enforce that Cloud SQL cannot silently fall back to `gcloud` or an external
 
 ### Install the Apple silicon DMG
 
-Download `Solnari-0.2.1-macos-arm64-unsigned.dmg` from the
-[Solnari 0.2.1 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.2.1). This free,
+Download `Solnari-0.3.0-macos-arm64-unsigned.dmg` from the
+[Solnari 0.3.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0). This free,
 open-source preview was created without Apple Developer Program membership. It is ad-hoc signed
 and has not been notarized by Apple. Approve its first launch on an Apple silicon Mac as follows:
 
@@ -230,7 +233,7 @@ Create a test DMG without Apple Developer Program membership:
 ./Scripts/package-local-dmg.sh
 ```
 
-The output is `.build/release/Solnari-0.2.1-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
+The output is `.build/release/Solnari-0.3.0-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
 GitHub Release preview, it contains an ad-hoc signed app and is not notarized.
 The workflow applies a fixed 660×400 Finder window, positioned app and Applications icons, a Retina
 background, and a custom volume icon, then verifies the contents and a clean mount/unmount cycle.
@@ -257,7 +260,7 @@ export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
 ./Scripts/package-release.sh
 ```
 
-The output is `.build/release/Solnari-0.2.1-macos-arm64.dmg` with a SHA-256 file. The workflow signs
+The output is `.build/release/Solnari-0.3.0-macos-arm64.dmg` with a SHA-256 file. The workflow signs
 the app and DMG with Developer ID, notarizes the DMG, and staples the ticket. Before enrollment, the
 certificate and notary preflight checks intentionally prevent this workflow from running.
 

@@ -69,6 +69,7 @@ actor PostgreSQLBackend {
       FROM pg_catalog.pg_namespace AS namespace
       WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
         AND namespace.nspname !~ '^pg_toast'
+        AND namespace.nspname !~ '^pg_temp_'
       ORDER BY namespace.nspname;
       """
     )
@@ -93,6 +94,7 @@ actor PostgreSQLBackend {
       WHERE relation.relkind IN ('r', 'p', 'v', 'm')
         AND namespace.nspname NOT IN ('pg_catalog', 'information_schema')
         AND namespace.nspname !~ '^pg_toast'
+        AND namespace.nspname !~ '^pg_temp_'
       GROUP BY namespace.nspname, relation.relname, relation.relkind
       ORDER BY namespace.nspname, relation.relname;
       """

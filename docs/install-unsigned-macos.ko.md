@@ -19,7 +19,7 @@ DMG를 열고 **Solnari** 아이콘을 오른쪽의 **Applications** 폴더로 �
 실행할 수 있습니다. 출력에 `OK`가 표시되지 않으면 DMG를 열지 마세요.
 
 ```bash
-shasum -a 256 -c Solnari-0.2.1-macos-arm64-unsigned.dmg.sha256
+shasum -a 256 -c Solnari-0.3.0-macos-arm64-unsigned.dmg.sha256
 ```
 
 ## 2. 최초 실행 경고 확인

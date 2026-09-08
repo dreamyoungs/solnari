@@ -39,6 +39,7 @@ private actor ConnectionTestCleanup {
 enum ConnectionTestDeadline {
   static func run<Value: Sendable>(
     timeout: Duration,
+    timeoutError: any Error = SolnariDatabaseError.connectionTestTimedOut,
     operation: @escaping @Sendable () async throws -> Value,
     cleanup: @escaping @Sendable () async -> Void = {}
   ) async throws -> Value {
@@ -57,7 +58,7 @@ enum ConnectionTestDeadline {
       } catch {
         return
       }
-      guard await race.resolve(.failure(SolnariDatabaseError.connectionTestTimedOut)) else {
+      guard await race.resolve(.failure(timeoutError)) else {
         return
       }
       operationTask.cancel()

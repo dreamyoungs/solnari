@@ -399,3 +399,58 @@
 "The database rejected the query." = "데이터베이스가 쿼리를 거부했습니다.";
 "The local credential encryption key is invalid." = "로컬 인증 정보 암호화 키가 올바르지 않습니다.";
 "The local encrypted credential store is invalid." = "로컬 암호화 인증 정보 저장소가 올바르지 않습니다.";
+
+/* Query plans, schema tabs, SQL formatting and temporary assistant */
+"Copy plan SQL" = "계획 SQL 복사";
+"Loading query plan…" = "실행 계획을 불러오는 중…";
+"Query plan cancelled. Reconnect to continue." = "실행 계획 조회를 취소했습니다. 계속하려면 다시 연결하세요.";
+"Query plan timed out. The connection was closed; reconnect to continue." = "실행 계획 조회 시간이 초과되어 연결을 닫았습니다. 다시 연결하세요.";
+"Explain supports a single SELECT, WITH, INSERT, UPDATE or DELETE statement. Remove any existing EXPLAIN prefix." = "실행 계획은 SELECT, WITH, INSERT, UPDATE, DELETE 단일 문장을 지원합니다. 기존 EXPLAIN 접두사를 제거하세요.";
+"Cannot safely inspect this SQL. Check unfinished quotes/comments, backslash escapes and executable comments." = "이 SQL을 안전하게 분석할 수 없습니다. 미완성 따옴표·주석, 역슬래시 이스케이프, 실행형 주석을 확인하세요.";
+"Explain requires exactly one SQL statement." = "실행 계획은 SQL 문장 하나만 선택해야 합니다.";
+"Pin tab" = "탭 고정";
+"Preview" = "미리보기";
+"Open" = "열기";
+"SQL could not be formatted safely. Check incomplete or unsupported syntax; the original SQL was preserved." = "SQL을 안전하게 정렬할 수 없습니다. 미완성 또는 지원되지 않는 문법을 확인하세요. 원본 SQL은 유지했습니다.";
+"Connect to Codex" = "Codex 연결";
+"Connecting to Codex…" = "Codex에 연결하는 중…";
+"Temporary conversation" = "임시 대화";
+"Temporary SQL assistant" = "임시 SQL 어시스턴트";
+"Codex CLI was not found. Install Codex CLI or the Codex desktop app." = "Codex CLI를 찾을 수 없습니다. Codex CLI 또는 Codex 데스크톱 앱을 설치하세요.";
+"This Codex CLI version has not been verified. This integration requires Codex CLI 0.153.x." = "검증되지 않은 Codex CLI 버전입니다. 이 통합에는 Codex CLI 0.153.x가 필요합니다.";
+"Codex stopped. Reconnect to start a new temporary conversation." = "Codex가 종료되었습니다. 다시 연결해 새 임시 대화를 시작하세요.";
+"Codex returned an invalid response. Start a new conversation." = "Codex가 올바르지 않은 응답을 반환했습니다. 새 대화를 시작하세요.";
+"Codex could not verify a temporary, restricted session. No database context was sent." = "임시 대화와 접근 제한을 검증하지 못했습니다. 데이터베이스 문맥은 전송하지 않았습니다.";
+"Codex could not complete the request. Check your account and try again." = "Codex가 요청을 완료하지 못했습니다. 계정을 확인한 후 다시 시도하세요.";
+"Codex did not respond in time. Reconnect and try again." = "Codex 응답 시간이 초과되었습니다. 다시 연결해 시도하세요.";
+"Sign in to ChatGPT to use the SQL assistant." = "SQL 어시스턴트를 사용하려면 ChatGPT에 로그인하세요.";
+"The request may contain credentials, a connection address or sensitive fields. Remove them before sending." = "요청에 인증 정보, 연결 주소 또는 민감한 필드가 포함되어 있을 수 있습니다. 제거 후 전송하세요.";
+"Complete sign-in in your browser, then check the connection." = "브라우저에서 로그인을 완료한 후 연결 상태를 확인하세요.";
+"Preparing selected context…" = "선택한 문맥을 준비하는 중…";
+"Receiving response…" = "응답을 받는 중…";
+"Check connection" = "연결 확인";
+"Sign in" = "로그인";
+"Browser sign-in" = "브라우저 로그인";
+"Device code sign-in" = "기기 코드 로그인";
+"Open sign-in page" = "로그인 페이지 열기";
+"Context to send" = "전송할 문맥";
+"Include current SQL" = "현재 SQL 포함";
+"Select up to 8 schema objects" = "스키마 객체를 최대 8개 선택하세요";
+"Send first 10 result rows once" = "이번 요청에 결과 첫 10개 행 전송";
+"Selected SQL, schema and opted-in rows are sent to OpenAI through your ChatGPT account. Result sharing resets after each request." = "선택한 SQL·스키마·결과 행은 ChatGPT 계정을 통해 OpenAI로 전송됩니다. 결과 공유 선택은 요청마다 해제됩니다.";
+"Drafts only · review SQL before running" = "SQL 초안 제안 · 실행 전 검토하세요";
+"Ask a question. Database context is excluded until you select it. Conversations are kept in memory only." = "질문을 입력하세요. 선택하기 전에는 데이터베이스 문맥을 포함하지 않습니다. 대화는 메모리에만 보관합니다.";
+"Waiting for Codex…" = "Codex 응답 대기 중…";
+"Send" = "전송";
+"Review SQL suggestion" = "SQL 제안 검토";
+"Current SQL" = "현재 SQL";
+"Suggested SQL" = "제안 SQL";
+"This creates a new query tab. SQL is not executed automatically." = "새 쿼리 탭을 만듭니다. SQL은 자동으로 실행하지 않습니다.";
+"Includes up to 10 result rows" = "결과 행 최대 10개 포함";
+"Selected context attached" = "선택한 문맥 포함";
+
+"Cancel closes this connection." = "취소하면 이 연결을 닫습니다.";
+
+"Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded." = "비밀번호는 Solnari 로컬 보관소에 암호화해 저장합니다. Codex와 공유할 SQL·스키마·결과 행은 직접 선택하며, 연결 인증 정보는 제외합니다.";
+
+"Checking Codex account…" = "Codex 계정을 확인하는 중…";

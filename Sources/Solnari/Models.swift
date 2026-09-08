@@ -416,12 +416,24 @@ struct SchemaObjectDetails: Hashable, Codable, Sendable {
   let definition: String?
 }
 
+enum WorkspaceTabKind: Hashable, Sendable {
+  case query
+  case schema(SchemaObject)
+}
+
 struct EditorTab: Identifiable, Hashable, Sendable {
   let id: UUID
   var title: String
   var sql: String
   var isModified: Bool
   var sourceObject: SchemaObject?
+  var kind: WorkspaceTabKind = .query
+  var isPreview = false
+
+  var schemaObject: SchemaObject? {
+    if case .schema(let object) = kind { return object }
+    return nil
+  }
 
   init(
     id: UUID = UUID(),
@@ -447,6 +459,40 @@ struct ConnectionWorkspace: Hashable, Sendable {
   var executionMessage: String
   var selectedResultTab: String
   var isRunning: Bool
+  var planTable: QueryTableData = .empty
+  var planSQL = ""
+  var planMessage = "Run EXPLAIN to inspect the query plan."
+
+  mutating func openSchema(_ object: SchemaObject, pinned: Bool) {
+    if let existing = editorTabs.firstIndex(where: { $0.schemaObject?.id == object.id }) {
+      if pinned { editorTabs[existing].isPreview = false }
+      selectedTabID = editorTabs[existing].id
+      return
+    }
+    if !pinned, let preview = editorTabs.firstIndex(where: \.isPreview) {
+      editorTabs[preview].title = object.name
+      editorTabs[preview].kind = .schema(object)
+      selectedTabID = editorTabs[preview].id
+      return
+    }
+    var tab = EditorTab(title: object.name, sql: "")
+    tab.kind = .schema(object)
+    tab.isPreview = !pinned
+    editorTabs.append(tab)
+    selectedTabID = tab.id
+  }
+
+  mutating func pinTab(_ id: UUID) {
+    guard let index = editorTabs.firstIndex(where: { $0.id == id }) else { return }
+    editorTabs[index].isPreview = false
+  }
+
+  mutating func closeTab(_ id: UUID) {
+    guard let index = editorTabs.firstIndex(where: { $0.id == id }) else { return }
+    editorTabs.remove(at: index)
+    if editorTabs.isEmpty { editorTabs.append(EditorTab(title: "Query 1", sql: "SELECT ")) }
+    if selectedTabID == id { selectedTabID = editorTabs[min(index, editorTabs.count - 1)].id }
+  }
 
   init() {
     let query = EditorTab(

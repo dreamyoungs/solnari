@@ -127,7 +127,7 @@ struct ConnectionProfileStoreTests {
       draft.testValidationIssues == [.cloudProject, .cloudRegion, .cloudInstance]
     )
 
-    draft.cloudProject = "cloud-turing-2025-07-07"
+    draft.cloudProject = "example-cloud-project"
     draft.cloudRegion = "asia-northeast3"
     draft.cloudInstance = "primary"
     #expect(draft.canTestConnection)

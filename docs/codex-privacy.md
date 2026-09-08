@@ -4,7 +4,7 @@ Solnari's Codex integration is designed for temporary, in-memory conversations. 
 metadata and query results can contain sensitive business information, so conversation
 persistence must be an explicit future opt-in rather than a default.
 
-This document governs the future in-app Codex conversation. The separately implemented local MCP
+This document governs the in-app Codex conversation. The separately implemented local MCP
 server for external agents is opt-in, has no conversation store, and exposes only bounded tools for
 the connection currently selected in Solnari. See [MCP access](mcp-access.ko.md).
 
@@ -69,3 +69,21 @@ Backend integration is not complete until automated tests demonstrate that:
 This contract governs Solnari's local persistence behavior. It does not by itself alter the
 data-retention policy of the selected model provider or account; those controls must be
 reviewed separately when the backend is implemented.
+
+## 현재 구현과 사용
+
+앱의 **Codex 연결**에서 연결을 확인하고 **로그인** 메뉴의 브라우저 또는 기기 코드 방식으로 ChatGPT에 로그인합니다. 로그인 URL과 일회용 코드만 앱에 표시하며 로그인 비밀번호나 토큰을 Solnari가 수집하지 않습니다. Codex는 앱 전용 `Solnari/CodexAssistant` 홈과 OS 키체인 인증 저장소를 사용하므로 기존 개인 Codex 설정·인증과 분리됩니다.
+
+설치된 CLI의 0.153.x 프로토콜을 지원하며 다른 버전은 검증 전 차단합니다. 초기화 후 실제 설정을 확인하여 쉘·Code Mode·MCP/플러그인·브라우저·이미지·하위 에이전트 기능을 제한합니다. macOS 실행 정책은 사용자 홈·외부 볼륨·공유 임시 디렉터리 데이터 읽기를 거부하고 앱 전용 Codex 홈 및 실행 파일을 예외로 둡니다. 인증 저장을 위해 사용자 `~/Library/Keychains` 디렉터리의 읽기·쓰기도 허용합니다. 키체인 파일 하나만 허용하면 Security.framework의 저장 단계가 실패하므로 디렉터리 범위가 필요합니다. 인증 항목의 접근 제어는 macOS 키체인이 적용합니다. 다른 실행 파일의 실행과 허용된 디렉터리 밖의 쓰기는 거부합니다. 서버가 도구·승인 요청을 보내면 세션을 중단합니다. 개인 또는 프로젝트의 instruction 파일을 로드한 응답도 거부합니다.
+
+사용자는 현재 SQL과 스키마 객체(최대 8개)를 선택합니다. 객체의 이름과 컬럼 이름·자료형만 문맥에 포함하며 DDL 정의·기본값은 포함하지 않습니다. 결과는 기본 제외이고 **이번 요청에 결과 첫 10개 행 전송**을 선택해야 포함됩니다. 이 선택은 요청마다 초기화되고 자격 증명 컬럼은 거부됩니다. 알려진 연결 주소와 자격 증명 패턴을 차단하지만 임의의 업무 기밀을 모두 자동 식별할 수는 없으므로 전송 선택은 사용자가 결정합니다.
+
+최종 응답은 설명과 SQL 제안을 구조화하여 받고, SQL은 현재 쿼리와 나란히 검토한 뒤 새 쿼리 탭에 넣습니다. 실행은 별도 동작입니다. 연결 전환·패널 닫기·새 대화·화면 잠금/잠자기·앱 종료 시 메모리 대화와 공유 선택을 제거합니다. 오류 메시지에는 서버 원문이나 인증 정보를 넣지 않습니다. 초기화/일반 요청은 15초, 대화 생성/턴 시작은 60초, 응답은 180초로 제한합니다. 취소는 `turn/interrupt` 후 프로세스를 종료하며 실패해도 새 대화로 재연결합니다.
+
+앱은 대화 내용을 저장하지 않습니다. Codex의 앱 전용 홈에는 인증과 무관한 런타임 파일·버전 캐시 등이 생길 수 있으며, 생성한 대화는 반드시 ephemeral/path-null 계약을 통과해야 합니다. OpenAI에 전송된 내용의 처리·보관은 해당 ChatGPT 계정의 정책을 따르며, 로컬 임시 대화가 서버의 보관 정책을 변경하는 것은 아닙니다.
+
+공식 규격: [Codex App Server](https://learn.chatgpt.com/docs/app-server), [Configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+테스트 실행: `swiftc Tests/Fixtures/CodexFakeServer.swift -o .build/codex-fake-server` 후 `SOLNARI_TEST_CODEX_FAKE="$PWD/.build/codex-fake-server" swift test --filter CodexAssistantTests`. 실제 CLI 초기화는 `SOLNARI_TEST_CODEX_REAL=1`로 별도 활성화하며 프롬프트나 DB 문맥을 보내지 않습니다. 인증된 실제 응답 테스트는 로그인된 전용 테스트 계정에서 별도로 수행해야 합니다.
+
+키체인 저장 회귀 검증은 `SOLNARI_TEST_CODEX_KEYCHAIN=1`을 추가하여 실행합니다. 실제 실행 제한 아래에서 고유한 가상 인증 항목 하나를 저장·조회·삭제하며, 기존 인증 항목은 읽거나 변경하지 않습니다. 로그인 키체인이 사용 가능한 Mac에서 실행해야 합니다.

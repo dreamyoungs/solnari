@@ -94,3 +94,58 @@
 "Column is not NULL" = "Column is not NULL";
 "Generate DELETE for matching rows" = "Generate DELETE for matching rows";
 "Query generation is available for results opened from the schema explorer." = "Query generation is available for results opened from the schema explorer.";
+
+/* Query plans, schema tabs, SQL formatting and temporary assistant */
+"Copy plan SQL" = "Copy plan SQL";
+"Loading query plan…" = "Loading query plan…";
+"Query plan cancelled. Reconnect to continue." = "Query plan cancelled. Reconnect to continue.";
+"Query plan timed out. The connection was closed; reconnect to continue." = "Query plan timed out. The connection was closed; reconnect to continue.";
+"Explain supports a single SELECT, WITH, INSERT, UPDATE or DELETE statement. Remove any existing EXPLAIN prefix." = "Explain supports a single SELECT, WITH, INSERT, UPDATE or DELETE statement. Remove any existing EXPLAIN prefix.";
+"Cannot safely inspect this SQL. Check unfinished quotes/comments, backslash escapes and executable comments." = "Cannot safely inspect this SQL. Check unfinished quotes/comments, backslash escapes and executable comments.";
+"Explain requires exactly one SQL statement." = "Explain requires exactly one SQL statement.";
+"Pin tab" = "Pin tab";
+"Preview" = "Preview";
+"Open" = "Open";
+"SQL could not be formatted safely. Check incomplete or unsupported syntax; the original SQL was preserved." = "SQL could not be formatted safely. Check incomplete or unsupported syntax; the original SQL was preserved.";
+"Connect to Codex" = "Connect to Codex";
+"Connecting to Codex…" = "Connecting to Codex…";
+"Temporary conversation" = "Temporary conversation";
+"Temporary SQL assistant" = "Temporary SQL assistant";
+"Codex CLI was not found. Install Codex CLI or the Codex desktop app." = "Codex CLI was not found. Install Codex CLI or the Codex desktop app.";
+"This Codex CLI version has not been verified. This integration requires Codex CLI 0.153.x." = "This Codex CLI version has not been verified. This integration requires Codex CLI 0.153.x.";
+"Codex stopped. Reconnect to start a new temporary conversation." = "Codex stopped. Reconnect to start a new temporary conversation.";
+"Codex returned an invalid response. Start a new conversation." = "Codex returned an invalid response. Start a new conversation.";
+"Codex could not verify a temporary, restricted session. No database context was sent." = "Codex could not verify a temporary, restricted session. No database context was sent.";
+"Codex could not complete the request. Check your account and try again." = "Codex could not complete the request. Check your account and try again.";
+"Codex did not respond in time. Reconnect and try again." = "Codex did not respond in time. Reconnect and try again.";
+"Sign in to ChatGPT to use the SQL assistant." = "Sign in to ChatGPT to use the SQL assistant.";
+"The request may contain credentials, a connection address or sensitive fields. Remove them before sending." = "The request may contain credentials, a connection address or sensitive fields. Remove them before sending.";
+"Complete sign-in in your browser, then check the connection." = "Complete sign-in in your browser, then check the connection.";
+"Preparing selected context…" = "Preparing selected context…";
+"Receiving response…" = "Receiving response…";
+"Check connection" = "Check connection";
+"Sign in" = "Sign in";
+"Browser sign-in" = "Browser sign-in";
+"Device code sign-in" = "Device code sign-in";
+"Open sign-in page" = "Open sign-in page";
+"Context to send" = "Context to send";
+"Include current SQL" = "Include current SQL";
+"Select up to 8 schema objects" = "Select up to 8 schema objects";
+"Send first 10 result rows once" = "Send first 10 result rows once";
+"Selected SQL, schema and opted-in rows are sent to OpenAI through your ChatGPT account. Result sharing resets after each request." = "Selected SQL, schema and opted-in rows are sent to OpenAI through your ChatGPT account. Result sharing resets after each request.";
+"Drafts only · review SQL before running" = "Drafts only · review SQL before running";
+"Ask a question. Database context is excluded until you select it. Conversations are kept in memory only." = "Ask a question. Database context is excluded until you select it. Conversations are kept in memory only.";
+"Waiting for Codex…" = "Waiting for Codex…";
+"Send" = "Send";
+"Review SQL suggestion" = "Review SQL suggestion";
+"Current SQL" = "Current SQL";
+"Suggested SQL" = "Suggested SQL";
+"This creates a new query tab. SQL is not executed automatically." = "This creates a new query tab. SQL is not executed automatically.";
+"Includes up to 10 result rows" = "Includes up to 10 result rows";
+"Selected context attached" = "Selected context attached";
+
+"Cancel closes this connection." = "Cancel closes this connection.";
+
+"Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded." = "Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded.";
+
+"Checking Codex account…" = "Checking Codex account…";

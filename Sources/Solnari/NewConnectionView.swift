@@ -195,17 +195,21 @@ struct NewConnectionView: View {
 
         VStack(alignment: .leading, spacing: 7) {
           fieldLabel("Engine")
-          Picker("", selection: $draft.engine) {
-            ForEach(DatabaseEngine.allCases) { engine in
-              HStack(spacing: 7) {
-                DatabaseEngineBadge(engine: engine, size: .picker)
-                  .accessibilityHidden(true)
+          HStack(spacing: 7) {
+            DatabaseEngineBadge(engine: draft.engine, size: .picker)
+              .accessibilityHidden(true)
+
+            // macOS 메뉴가 원본 이미지 크기를 사용하지 않도록 배지를 Picker 밖에 둡니다.
+            Picker(settings.text("Engine"), selection: $draft.engine) {
+              ForEach(DatabaseEngine.allCases) { engine in
                 Text(settings.text(engine.rawValue))
+                  .tag(engine)
               }
-              .tag(engine)
             }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
           }
-          .labelsHidden()
           .frame(width: 190)
         }
       }
@@ -547,7 +551,7 @@ struct NewConnectionView: View {
           .font(.caption.weight(.semibold))
         Text(
           settings.text(
-            "Passwords are encrypted in Solnari's local vault. Codex receives schema metadata and proposed SQL, never connection credentials."
+            "Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded."
           )
         )
         .font(.caption2)

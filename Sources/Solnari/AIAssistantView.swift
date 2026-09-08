@@ -3,194 +3,193 @@ import SwiftUI
 
 struct AIAssistantView: View {
   @EnvironmentObject private var model: WorkspaceModel
+  var body: some View {
+    SQLAssistantPanel(assistant: model.assistant)
+  }
+}
+
+private struct SQLAssistantPanel: View {
+  @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
-  @State private var selectedContext = "Current schema"
+  @ObservedObject var assistant: SQLAssistantModel
+  @State private var review: AssistantSuggestion?
+  @State private var showContext = false
 
   var body: some View {
     VStack(spacing: 0) {
-      header
-      contextBar
-      messages
-      composer
-    }
-    .background(SolnariTheme.panel)
-    .overlay(alignment: .leading) { Divider() }
-  }
-
-  private var header: some View {
-    HStack(spacing: 9) {
-      ZStack {
-        Circle()
-          .fill(SolnariTheme.indigo.opacity(0.12))
-          .frame(width: 28, height: 28)
-        Image(systemName: "sparkles")
-          .font(.system(size: 13, weight: .semibold))
-          .foregroundStyle(SolnariTheme.indigo)
-      }
-      VStack(alignment: .leading, spacing: 1) {
-        Text(settings.text("Ask Codex"))
-          .font(.system(size: 13, weight: .semibold))
-        HStack(spacing: 5) {
-          StatusDot(color: SolnariTheme.orange, size: 5)
-          Text(settings.text("Preview · ephemeral sessions planned"))
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .help(settings.text("Conversation is kept in memory only"))
+      HStack {
+        Label(settings.text("Ask Codex"), systemImage: "sparkles")
+          .font(.headline)
+        Spacer()
+        Button {
+          assistant.close()
+        } label: {
+          Image(systemName: "plus.bubble")
+        }
+        .help(settings.text("New conversation"))
+        Button {
+          assistant.close()
+          model.isAssistantVisible = false
+        } label: {
+          Image(systemName: "xmark")
         }
       }
-      Spacer()
-      Button {
-      } label: {
-        Image(systemName: "plus.bubble")
-      }
       .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-      .help(settings.text("New conversation"))
-      Button {
-        withAnimation(.snappy) { model.isAssistantVisible = false }
-      } label: {
-        Image(systemName: "xmark")
+      .padding(13)
+      Divider()
+      VStack(alignment: .leading, spacing: 8) {
+        Text(settings.text(assistant.status)).font(.caption).textSelection(.enabled)
+        if !assistant.signedIn {
+          HStack {
+            Button(settings.text("Check connection")) { assistant.connect() }
+            Menu(settings.text("Sign in")) {
+              Button(settings.text("Browser sign-in")) { assistant.login(device: false) }
+              Button(settings.text("Device code sign-in")) { assistant.login(device: true) }
+            }
+          }
+          .disabled(assistant.isBusy)
+        }
+        if let url = assistant.loginURL {
+          Link(settings.text("Open sign-in page"), destination: url)
+          if let code = assistant.deviceCode {
+            Text(code).font(.body.monospaced()).textSelection(.enabled)
+          }
+        }
+        DisclosureGroup(settings.text("Context to send"), isExpanded: $showContext) {
+          VStack(alignment: .leading, spacing: 7) {
+            Toggle(settings.text("Include current SQL"), isOn: $assistant.includeSQL)
+            Text(settings.text("Select up to 8 schema objects")).font(.caption)
+            ScrollView {
+              VStack(alignment: .leading) {
+                ForEach(model.schemaObjects) { object in
+                  Toggle(
+                    object.qualifiedName,
+                    isOn: Binding(
+                      get: { assistant.selectedObjects.contains(object.id) },
+                      set: {
+                        if $0 {
+                          assistant.selectedObjects.insert(object.id)
+                        } else {
+                          assistant.selectedObjects.remove(object.id)
+                        }
+                      }
+                    ))
+                }
+              }
+            }
+            .frame(maxHeight: 100)
+            Toggle(settings.text("Send first 10 result rows once"), isOn: $assistant.includeRows)
+            Text(
+              settings.text(
+                "Selected SQL, schema and opted-in rows are sent to OpenAI through your ChatGPT account. Result sharing resets after each request."
+              )
+            )
+            .font(.caption2).foregroundStyle(.secondary)
+          }
+          .padding(.top, 6)
+        }
+        .disabled(assistant.isBusy)
+        Text(settings.text("Drafts only · review SQL before running"))
+          .font(.caption2).foregroundStyle(.secondary)
       }
-      .buttonStyle(.plain)
-      .foregroundStyle(.secondary)
-    }
-    .padding(.horizontal, 13)
-    .frame(height: 48)
-    .background(SolnariTheme.elevated)
-    .overlay(alignment: .bottom) { Divider() }
-  }
-
-  private var contextBar: some View {
-    HStack(spacing: 6) {
-      Image(systemName: "paperclip")
-        .foregroundStyle(.secondary)
-      Menu(settings.text(selectedContext)) {
-        Button(settings.text("Current schema")) { selectedContext = "Current schema" }
-        Button(settings.text("Selected tables")) { selectedContext = "Selected tables" }
-        Button(settings.text("No database context")) { selectedContext = "No database context" }
+      .padding(12)
+      Divider()
+      ScrollViewReader { proxy in
+        ScrollView {
+          LazyVStack(spacing: 14) {
+            if assistant.messages.isEmpty {
+              Text(
+                settings.text(
+                  "Ask a question. Database context is excluded until you select it. Conversations are kept in memory only."
+                )
+              )
+              .font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(assistant.messages) { message in
+              AssistantMessageView(message: message) { sql in
+                review = AssistantSuggestion(explanation: message.text, sql: sql)
+              }
+            }
+            if assistant.isBusy {
+              Text(
+                assistant.streamedText.isEmpty
+                  ? settings.text("Waiting for Codex…") : assistant.streamedText
+              )
+              .font(.callout).textSelection(.enabled)
+            }
+            Color.clear.frame(height: 1).id("end")
+          }
+          .padding(13)
+        }
+        .onChange(of: assistant.streamedText) { proxy.scrollTo("end", anchor: .bottom) }
+        .onChange(of: assistant.messages.count) { proxy.scrollTo("end", anchor: .bottom) }
       }
-      .menuStyle(.borderlessButton)
-      .fixedSize()
-      Spacer()
-      PillLabel("Read only", symbol: "shield.lefthalf.filled", tint: SolnariTheme.mint)
+      Divider()
+      VStack(spacing: 8) {
+        TextEditor(text: $assistant.draft)
+          .font(.system(size: 12))
+          .frame(minHeight: 50, maxHeight: 90)
+          .accessibilityLabel(settings.text("Ask about your data or SQL…"))
+        HStack {
+          Text(contextSummary).font(.caption2).foregroundStyle(.secondary)
+          Spacer()
+          if assistant.isBusy {
+            Button(settings.text("Cancel")) { assistant.cancel() }
+          } else {
+            Button(settings.text("Send")) { assistant.send(workspace: model) }
+              .disabled(
+                !assistant.signedIn
+                  || assistant.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          }
+        }
+      }
+      .padding(12)
     }
-    .padding(.horizontal, 12)
-    .frame(height: 37)
-    .background(SolnariTheme.subtleFill)
-    .overlay(alignment: .bottom) { Divider() }
-  }
-
-  private var messages: some View {
-    ScrollViewReader { proxy in
-      ScrollView {
-        LazyVStack(spacing: 14) {
-          ForEach(model.assistantMessages) { message in
-            AssistantMessageView(message: message) { sql in
+    .background(SolnariTheme.panel)
+    .onChange(of: model.selectedConnectionID) { assistant.close() }
+    .onDisappear { assistant.close() }
+    .sheet(item: $review) { suggestion in
+      VStack(alignment: .leading, spacing: 14) {
+        Text(settings.text("Review SQL suggestion")).font(.headline)
+        HStack(alignment: .top, spacing: 16) {
+          reviewColumn("Current SQL", sql: model.selectedTab?.sql ?? "")
+          reviewColumn("Suggested SQL", sql: suggestion.sql ?? "")
+        }
+        Text(settings.text("This creates a new query tab. SQL is not executed automatically."))
+          .font(.caption).foregroundStyle(.secondary)
+        HStack {
+          Spacer()
+          Button(settings.text("Cancel")) { review = nil }
+          Button(settings.text("Use in editor")) {
+            if let sql = suggestion.sql {
+              model.newQueryTab()
               model.useSQL(sql)
             }
-            .id(message.id)
+            review = nil
           }
-
-          suggestions
-        }
-        .padding(13)
-      }
-      .onChange(of: model.assistantMessages.count) {
-        if let last = model.assistantMessages.last {
-          withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+          .buttonStyle(.borderedProminent)
         }
       }
+      .padding(20).frame(width: 760, height: 500)
     }
   }
 
-  private var suggestions: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      Text(settings.text("Try asking"))
-        .font(.caption2.weight(.semibold))
-        .foregroundStyle(.tertiary)
-        .textCase(.uppercase)
-
-      suggestionButton("Explain this query", symbol: "text.magnifyingglass")
-      suggestionButton("Find performance risks", symbol: "gauge.with.dots.needle.50percent")
-      suggestionButton("Add a date filter", symbol: "calendar.badge.plus")
+  private var contextSummary: String {
+    if assistant.includeRows { return settings.text("Includes up to 10 result rows") }
+    if assistant.includeSQL || !assistant.selectedObjects.isEmpty {
+      return settings.text("Selected context attached")
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    return settings.text("No database context")
   }
-
-  private func suggestionButton(_ title: String, symbol: String) -> some View {
-    Button {
-      model.assistantDraft = title
-      model.sendAssistantMessage()
-    } label: {
-      HStack(spacing: 8) {
-        Image(systemName: symbol)
-          .foregroundStyle(SolnariTheme.indigo)
-          .frame(width: 16)
-        Text(settings.text(title))
-        Spacer()
-        Image(systemName: "arrow.up.right")
-          .font(.caption2)
-          .foregroundStyle(.tertiary)
-      }
-      .font(.caption)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 8)
-      .background(SolnariTheme.elevated, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-      .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(SolnariTheme.border))
-    }
-    .buttonStyle(.plain)
-  }
-
-  private var composer: some View {
-    VStack(spacing: 8) {
-      ZStack(alignment: .topLeading) {
-        if model.assistantDraft.isEmpty {
-          Text(settings.text("Ask about your data or SQL…"))
-            .font(.system(size: 12))
-            .foregroundStyle(.tertiary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 9)
-        }
-        TextEditor(text: $model.assistantDraft)
-          .font(.system(size: 12))
-          .scrollContentBackground(.hidden)
-          .frame(minHeight: 46, maxHeight: 92)
-          .padding(.horizontal, 3)
-          .background(.clear)
-      }
-
-      HStack {
-        Button {
-        } label: {
-          Image(systemName: "plus")
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        Text(settings.text("Schema attached"))
-          .font(.caption2)
-          .foregroundStyle(.tertiary)
-        Spacer()
-        Button {
-          model.sendAssistantMessage()
-        } label: {
-          Image(systemName: "arrow.up")
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 25, height: 25)
-            .background(
-              model.assistantDraft.isEmpty ? Color.secondary.opacity(0.35) : SolnariTheme.indigo,
-              in: Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(model.assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+  private func reviewColumn(_ title: String, sql: String) -> some View {
+    VStack(alignment: .leading) {
+      Text(settings.text(title)).font(.subheadline)
+      ScrollView {
+        Text(sql).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).frame(
+          maxWidth: .infinity, alignment: .leading)
       }
     }
-    .padding(9)
-    .background(SolnariTheme.elevated, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(SolnariTheme.border))
-    .padding(10)
-    .background(SolnariTheme.panel)
-    .overlay(alignment: .top) { Divider() }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
 
@@ -212,7 +211,7 @@ private struct AssistantMessageView: View {
       }
 
       VStack(alignment: .leading, spacing: 9) {
-        Text(settings.text(message.text))
+        Text(message.text)
           .font(.system(size: 12))
           .lineSpacing(3)
           .textSelection(.enabled)

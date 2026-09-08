@@ -4,14 +4,21 @@ import SwiftUI
 struct SchemaInspectorView: View {
   @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
-  @Environment(\.dismiss) private var dismiss
 
   let object: SchemaObject
+  let profileID: UUID
+  let tabID: UUID
   @State private var details: SchemaObjectDetails?
   @State private var selectedTab: DetailTab = .columns
   @State private var isLoading = true
   @State private var errorMessage: String?
   @State private var errorDiagnostic: String?
+
+  private struct LoadIdentity: Hashable {
+    let object: SchemaObject
+    let connected: Bool
+    let exists: Bool
+  }
 
   private enum DetailTab: String, CaseIterable, Identifiable {
     case columns = "Columns"
@@ -30,9 +37,17 @@ struct SchemaInspectorView: View {
       content
       footer
     }
-    .frame(width: 840, height: 600)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(SolnariTheme.panel)
-    .task(id: object.id) { await loadDetails() }
+    .task(
+      id: LoadIdentity(
+        object: object,
+        connected: model.selectedConnection?.status == .connected,
+        exists: model.schemaObjects.contains(where: { $0.id == object.id }))
+    ) {
+      selectedTab = .columns
+      await loadDetails()
+    }
   }
 
   private var header: some View {
@@ -61,12 +76,10 @@ struct SchemaInspectorView: View {
       }
       Button {
         model.generateSelect(for: object)
-        dismiss()
       } label: {
         Label(settings.text("Generate SELECT"), systemImage: "terminal")
       }
       Button {
-        dismiss()
         Task { await model.openData(for: object) }
       } label: {
         Label(settings.text("Open data"), systemImage: "tablecells")
@@ -74,7 +87,7 @@ struct SchemaInspectorView: View {
       .buttonStyle(.borderedProminent)
       .tint(SolnariTheme.indigo)
       Button {
-        dismiss()
+        model.closeTab(tabID)
       } label: {
         Image(systemName: "xmark")
           .frame(width: 24, height: 24)
@@ -330,8 +343,10 @@ struct SchemaInspectorView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
       Spacer()
-      Button(settings.text("Close")) { dismiss() }
-        .keyboardShortcut(.cancelAction)
+      if model.editorTabs.first(where: { $0.id == tabID })?.isPreview == true {
+        Button(settings.text("Pin tab")) { model.pinTab(tabID) }
+      }
+      Button(settings.text("Close")) { model.closeTab(tabID) }
     }
     .padding(.horizontal, 20)
     .frame(height: 52)
@@ -341,11 +356,15 @@ struct SchemaInspectorView: View {
 
   private func loadDetails() async {
     isLoading = true
+    details = nil
     errorMessage = nil
     errorDiagnostic = nil
     do {
-      details = try await model.loadSchemaObjectDetails(object)
+      let loaded = try await model.loadSchemaObjectDetails(object, profileID: profileID)
+      try Task.checkCancellation()
+      details = loaded
     } catch {
+      guard !Task.isCancelled else { return }
       details = nil
       if let metadataError = error as? SchemaMetadataError {
         errorMessage = metadataError.messageKey

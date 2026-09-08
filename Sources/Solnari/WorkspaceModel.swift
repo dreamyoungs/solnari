@@ -8,15 +8,14 @@ final class WorkspaceModel: ObservableObject {
   @Published private var connectionWorkspaces: [UUID: ConnectionWorkspace] = [:]
   @Published private var detachedWorkspace = ConnectionWorkspace()
   @Published private(set) var connectingProfileIDs: Set<UUID> = []
-  @Published var assistantMessages: [AssistantMessage]
-  @Published var assistantDraft = ""
+  let assistant = SQLAssistantModel()
+  @Published var formatRequestID = UUID()
   @Published var isAssistantVisible = true
   @Published var showNewConnection = false
   @Published private(set) var editingConnectionID: UUID?
   @Published private(set) var presentedConnectionDraft: ConnectionDraft?
   @Published private(set) var newConnectionProfileID: UUID?
   @Published var presentedError: String?
-  @Published var presentedSchemaObject: SchemaObject?
   @Published private(set) var areConnectionOperationsSuspended = false
 
   private let backend: DatabaseBackend
@@ -24,6 +23,7 @@ final class WorkspaceModel: ObservableObject {
   private let passwordStore: LocalEncryptedPasswordStore
   private var activeSuspensionCleanups = 0
   private var resumeRequestedAfterCleanup = false
+  private var planTasks: [UUID: Task<Void, Never>] = [:]
 
   init(
     backend: DatabaseBackend = DatabaseBackend(),
@@ -48,13 +48,6 @@ final class WorkspaceModel: ObservableObject {
     connectionWorkspaces = Dictionary(
       uniqueKeysWithValues: storedConnections.map { ($0.id, ConnectionWorkspace()) }
     )
-    assistantMessages = [
-      AssistantMessage(
-        role: .assistant,
-        text: "I’ve read the schema. I can explain queries or suggest safer and faster SQL.",
-        sql: nil
-      )
-    ]
     presentedError = profileLoadError
   }
 
@@ -112,6 +105,70 @@ final class WorkspaceModel: ObservableObject {
     selectedConnectionID.map(connectingProfileIDs.contains) ?? false
   }
 
+  var planTable: QueryTableData { workspace(for: selectedConnectionID).planTable }
+  var planSQL: String { workspace(for: selectedConnectionID).planSQL }
+  var planMessage: String { workspace(for: selectedConnectionID).planMessage }
+  var isPlanning: Bool { selectedConnectionID.map { planTasks[$0] != nil } ?? false }
+  var canExplain: Bool {
+    !areConnectionOperationsSuspended && !isRunning && !isConnecting
+      && selectedConnection?.status == .connected
+      && selectedConnection?.effectiveAccessLevel != .migration
+      && selectedTab?.kind == .query
+      && !(selectedTab?.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+  }
+
+  func explainCurrentQuery() {
+    guard canExplain, let profile = selectedConnection, let sql = selectedTab?.sql else { return }
+    let statement: String
+    do {
+      statement = try QueryPlanBuilder.statement(sql: sql, engine: profile.engine)
+    } catch {
+      updateWorkspace(for: profile.id) {
+        $0.selectedResultTab = "Explain"
+        $0.planTable = .empty
+        $0.planSQL = ""
+        $0.planMessage = error.localizedDescription
+      }
+      return
+    }
+    updateWorkspace(for: profile.id) {
+      $0.selectedResultTab = "Explain"
+      $0.planTable = .empty
+      $0.planSQL = statement
+      $0.planMessage = "Loading query plan…"
+      $0.isRunning = true
+    }
+    planTasks[profile.id] = Task { [weak self, backend] in
+      do {
+        let result = try await backend.explain(profileID: profile.id, sql: sql)
+        try Task.checkCancellation()
+        self?.updateWorkspace(for: profile.id) {
+          $0.planTable = result.table
+          $0.planMessage = "\(result.table.rows.count) rows · \(result.durationMilliseconds) ms"
+        }
+      } catch {
+        let cancelled = Task.isCancelled || error is CancellationError
+        self?.updateWorkspace(for: profile.id) {
+          $0.planMessage =
+            cancelled
+            ? "Query plan cancelled. Reconnect to continue." : error.localizedDescription
+        }
+        if cancelled || (error as? QueryPlanError) == .timedOut,
+          let index = self?.connections.firstIndex(where: { $0.id == profile.id })
+        {
+          self?.connections[index].status = .disconnected
+        }
+      }
+      self?.planTasks[profile.id] = nil
+      self?.updateWorkspace(for: profile.id) { $0.isRunning = false }
+    }
+  }
+
+  func cancelQueryPlan() {
+    guard let id = selectedConnectionID else { return }
+    planTasks[id]?.cancel()
+  }
+
   var editingConnection: ConnectionProfile? {
     guard let editingConnectionID else { return nil }
     return connections.first { $0.id == editingConnectionID }
@@ -150,23 +207,22 @@ final class WorkspaceModel: ObservableObject {
     }
   }
 
-  func presentSchemaObject(_ object: SchemaObject) {
-    presentedSchemaObject = object
+  func presentSchemaObject(_ object: SchemaObject, pinned: Bool = false) {
+    updateWorkspace(for: selectedConnectionID) { $0.openSchema(object, pinned: pinned) }
   }
 
-  func dismissSchemaObject() {
-    presentedSchemaObject = nil
+  func pinTab(_ tabID: UUID) {
+    updateWorkspace(for: selectedConnectionID) { $0.pinTab(tabID) }
   }
 
-  func loadSchemaObjectDetails(_ object: SchemaObject) async throws -> SchemaObjectDetails {
-    guard let profileID = selectedConnectionID else {
-      throw SolnariDatabaseError.missingConnection
-    }
-    if connections.first(where: { $0.id == profileID })?.status != .connected {
-      await connect(profileID: profileID)
-    }
+  func loadSchemaObjectDetails(_ object: SchemaObject, profileID: UUID) async throws
+    -> SchemaObjectDetails
+  {
     guard connections.first(where: { $0.id == profileID })?.status == .connected else {
       throw SolnariDatabaseError.notConnected
+    }
+    guard workspace(for: profileID).schema.objects.contains(where: { $0.id == object.id }) else {
+      throw MCPAccessError.schemaObjectNotFound
     }
     return try await backend.loadSchemaObjectDetails(profileID: profileID, object: object)
   }
@@ -187,16 +243,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func closeTab(_ tabID: UUID) {
-    guard editorTabs.count > 1, let index = editorTabs.firstIndex(where: { $0.id == tabID }) else {
-      return
-    }
-    updateWorkspace(for: selectedConnectionID) { workspace in
-      workspace.editorTabs.remove(at: index)
-      if workspace.selectedTabID == tabID {
-        let selectedIndex = min(index, workspace.editorTabs.count - 1)
-        workspace.selectedTabID = workspace.editorTabs[selectedIndex].id
-      }
-    }
+    updateWorkspace(for: selectedConnectionID) { $0.closeTab(tabID) }
   }
 
   func beginNewConnection() {
@@ -346,11 +393,9 @@ final class WorkspaceModel: ObservableObject {
   func activateSelectedConnection() async {
     guard !areConnectionOperationsSuspended else { return }
     guard let selectedConnectionID else {
-      presentedSchemaObject = nil
       return
     }
     ensureWorkspace(for: selectedConnectionID)
-    presentedSchemaObject = nil
     guard connections.first(where: { $0.id == selectedConnectionID })?.status != .connected else {
       await refreshSchema(profileID: selectedConnectionID)
       return
@@ -359,6 +404,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func connect(profileID: UUID) async {
+    guard planTasks[profileID] == nil else { return }
     guard !areConnectionOperationsSuspended, !connectingProfileIDs.contains(profileID),
       let index = connections.firstIndex(where: { $0.id == profileID })
     else {
@@ -413,6 +459,10 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func removeConnection(_ profileID: UUID) async {
+    if let plan = planTasks[profileID] {
+      plan.cancel()
+      await plan.value
+    }
     await backend.disconnect(profileID: profileID)
     do {
       try passwordStore.delete(for: profileID)
@@ -435,6 +485,7 @@ final class WorkspaceModel: ObservableObject {
   func runCurrentQuery() async {
     guard !areConnectionOperationsSuspended, let profileID = selectedConnectionID,
       !workspace(for: profileID).isRunning,
+      selectedTab?.kind == .query,
       let sql = selectedTab?.sql.trimmingCharacters(in: .whitespacesAndNewlines), !sql.isEmpty
     else { return }
     let explicitSourceObject = workspace(for: profileID).editorTabs.first {
@@ -494,6 +545,10 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func suspendConnections() async {
+    await assistant.shutdown()
+    let pendingPlans = Array(planTasks.values)
+    for task in pendingPlans { task.cancel() }
+    for task in pendingPlans { await task.value }
     resumeRequestedAfterCleanup = false
     activeSuspensionCleanups += 1
     areConnectionOperationsSuspended = true
@@ -573,23 +628,12 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func formatCurrentSQL() {
-    guard let selectedTabID,
-      let index = editorTabs.firstIndex(where: { $0.id == selectedTabID })
-    else { return }
-    var sql = editorTabs[index].sql
-    for keyword in [
-      "select", "from", "left join", "on", "where", "group by", "order by", "limit", "as",
-    ] {
-      sql = sql.replacingOccurrences(
-        of: keyword, with: keyword.uppercased(), options: .caseInsensitive)
-    }
-    updateWorkspace(for: selectedConnectionID) {
-      $0.editorTabs[index].sql = sql
-      $0.editorTabs[index].isModified = true
-    }
+    guard selectedTab?.kind == .query else { return }
+    formatRequestID = UUID()
   }
 
   func useSQL(_ sql: String) {
+    if selectedTab?.kind != .query { newQueryTab() }
     guard let selectedTabID,
       let index = editorTabs.firstIndex(where: { $0.id == selectedTabID })
     else { return }
@@ -601,6 +645,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   private func placeGeneratedQuery(_ sql: String, sourceObject: SchemaObject) {
+    if selectedTab?.kind != .query { newQueryTab() }
     guard let selectedTabID,
       let index = editorTabs.firstIndex(where: { $0.id == selectedTabID })
     else { return }
@@ -609,21 +654,6 @@ final class WorkspaceModel: ObservableObject {
       $0.editorTabs[index].isModified = true
       $0.editorTabs[index].sourceObject = sourceObject
     }
-  }
-
-  func sendAssistantMessage() {
-    let trimmed = assistantDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return }
-    assistantMessages.append(AssistantMessage(role: .user, text: trimmed, sql: nil))
-    assistantDraft = ""
-    assistantMessages.append(
-      AssistantMessage(
-        role: .assistant,
-        text:
-          "I created a read-only query using only the selected schema. Review the SQL before running it.",
-        sql: "SELECT current_database(), current_user, now();"
-      )
-    )
   }
 
   func mcpSelectedProfile() throws -> ConnectionProfile {

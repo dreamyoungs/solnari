@@ -5,15 +5,37 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.3.0 Apple Silicon preview] - 2026-09-08
+
 ### Added
 
 - Result-cell context menus generate value-based `SELECT` and reviewable `DELETE` statements in the
   SQL editor without executing them automatically, including on read-only connections.
 
+- Safe dialect-specific execution plans with cancellation and generated-SQL copying.
+- Schema preview and pinned tabs with separate per-connection workspaces.
+- Dialect-aware SQL formatting with selection preservation and undo support.
+- An opt-in Codex App Server SQL assistant with browser/device-code login, temporary conversations,
+  explicit context selection, and SQL review before inserting a new query tab.
+- Connection-profile duplication, import, and export.
+- Database-engine badges, a macOS Settings shortcut, and a branded drag-to-install DMG.
+
 ### Fixed
 
+- Database-engine selection stays usable in the new-connection form without oversized icons.
+- PostgreSQL temporary schemas (`pg_temp_*`) are hidden from the explorer for direct and Cloud SQL
+  connections.
+- Codex authentication can access the macOS keychain under the app's process restrictions.
+- An idle Node backend no longer blocks Codex startup and response reading.
 - Structured Cloud SQL JSON values are displayed as JSON instead of `[object Object]`.
 - Failed queries no longer leave a previous successful result visible in the result grid.
+
+### Known limitations
+
+- The Apple Silicon DMG is ad-hoc signed and not notarized.
+- The SQL assistant requires an installed Codex CLI using the supported 0.153.x protocol and a
+  separate ChatGPT sign-in for Solnari. AI requests are processed by OpenAI.
+- Schema tabs and assistant conversations are held in memory rather than restored across launches.
 
 ## [0.2.1 source preview] - 2026-09-03
 
@@ -62,7 +84,8 @@ All notable changes to Solnari are documented here. The project follows
 - Table data editing, query cancellation, organization-managed policies, and full orphan recovery
   remain in progress.
 
-[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.3.0...HEAD
+[0.3.0 Apple Silicon preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0
 [0.2.1 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.1
 [0.2.0 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.0
 [0.1.0 source preview]: https://github.com/dreamyoungs/solnari/commit/58d29f68ec57cbb2bffcc1c2685f27a9b21a8a72

@@ -162,6 +162,14 @@ actor DatabaseBackend {
     }
   }
 
+  func explain(profileID: UUID, sql: String) async throws -> QueryExecutionResult {
+    let statement = try QueryPlanBuilder.statement(sql: sql, engine: engine(for: profileID))
+    return try await QueryPlanExecution.run(
+      operation: { try await self.execute(profileID: profileID, sql: statement) },
+      cancel: { await self.disconnect(profileID: profileID) }
+    )
+  }
+
   private func testEngine(_ profile: ConnectionProfile, password: String) async throws
     -> ConnectionMetadata
   {

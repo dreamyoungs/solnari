@@ -137,6 +137,7 @@ export class DatabaseSessions {
            FROM pg_catalog.pg_namespace AS namespace
           WHERE namespace.nspname NOT IN ('pg_catalog', 'information_schema')
             AND namespace.nspname NOT LIKE 'pg_toast%'
+            AND namespace.nspname !~ '^pg_temp_'
           ORDER BY namespace.nspname`,
       );
       const result = await session.client.query<{
@@ -162,6 +163,7 @@ export class DatabaseSessions {
          WHERE relation.relkind IN ('r', 'p', 'v', 'm')
            AND namespace.nspname NOT IN ('pg_catalog', 'information_schema')
            AND namespace.nspname NOT LIKE 'pg_toast%'
+           AND namespace.nspname !~ '^pg_temp_'
          GROUP BY namespace.nspname, relation.relname, relation.relkind
          ORDER BY namespace.nspname, relation.relname`);
       return {

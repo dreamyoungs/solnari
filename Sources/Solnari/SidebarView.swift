@@ -253,9 +253,9 @@ struct SidebarView: View {
       Image(systemName: "checkmark.seal.fill")
         .foregroundStyle(SolnariTheme.orange)
       VStack(alignment: .leading, spacing: 1) {
-        Text(settings.text("Codex preview"))
+        Text(settings.text("Ask Codex"))
           .font(.caption.weight(.medium))
-        Text(settings.text("Integration planned"))
+        Text(settings.text("Temporary SQL assistant"))
           .font(.caption2)
           .foregroundStyle(.secondary)
       }
@@ -346,9 +346,12 @@ private struct SchemaObjectRow: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .simultaneousGesture(
+      TapGesture(count: 2).onEnded { model.presentSchemaObject(object, pinned: true) }
+    )
     .contextMenu {
       Button(settings.text("View structure")) {
-        model.presentSchemaObject(object)
+        model.presentSchemaObject(object, pinned: true)
       }
       Button(settings.text("Open data")) {
         Task { await model.openData(for: object) }

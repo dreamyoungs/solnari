@@ -69,6 +69,12 @@ struct PostgreSQLBackendIntegrationTests {
       Issue.record("date 값이어야 합니다.")
     }
 
+    let plan = try await backend.execute(
+      profileID: profile.id,
+      sql: QueryPlanBuilder.statement(sql: "SELECT 1 AS planned", engine: .postgresql)
+    )
+    #expect(!plan.table.rows.isEmpty)
+
     await backend.disconnect(profileID: profile.id)
   }
 }

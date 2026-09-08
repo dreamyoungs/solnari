@@ -56,10 +56,6 @@ struct ContentView: View {
       )
       .environmentObject(model)
     }
-    .sheet(item: $model.presentedSchemaObject) { object in
-      SchemaInspectorView(object: object)
-        .environmentObject(model)
-    }
     .task {
       await model.activateSelectedConnection()
     }

@@ -40,6 +40,12 @@ struct MySQLBackendIntegrationTests {
     #expect(result.table.columns == ["id", "name", "amount"])
     #expect(result.table.rows.first?[0] == .integer(1))
     #expect(result.table.rows.first?[1] == .text("솔나리"))
+    let plan = try await backend.execute(
+      profileID: profile.id,
+      sql: QueryPlanBuilder.statement(sql: "SELECT 1 AS planned", engine: .mysql)
+    )
+    #expect(!plan.table.rows.isEmpty)
+
     await backend.disconnect(profileID: profile.id)
   }
 }

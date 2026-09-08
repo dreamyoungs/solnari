@@ -11,7 +11,14 @@ struct WorkspaceView: View {
       connectionBar
       EditorTabBar()
 
-      workspaceSplit
+      if let tab = model.selectedTab, let object = tab.schemaObject,
+        let profileID = model.selectedConnectionID
+      {
+        SchemaInspectorView(object: object, profileID: profileID, tabID: tab.id)
+          .id(tab.id)
+      } else {
+        workspaceSplit
+      }
 
       statusBar
     }
@@ -87,7 +94,7 @@ struct WorkspaceView: View {
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)
       .help(settings.text("Reconnect"))
-      .disabled(model.isConnecting || model.selectedConnectionID == nil)
+      .disabled(model.isConnecting || model.isRunning || model.selectedConnectionID == nil)
 
       Button {
       } label: {
@@ -106,7 +113,8 @@ struct WorkspaceView: View {
     HStack(spacing: 13) {
       if let connection = model.selectedConnection {
         Label(
-          connection.serverVersion.map { "PostgreSQL \($0)" } ?? connection.engine.rawValue,
+          connection.serverVersion.map { "\(connection.engine.rawValue) \($0)" }
+            ?? connection.engine.rawValue,
           systemImage: "cylinder")
         Divider().frame(height: 12)
         Label(settings.text(connection.status.rawValue), systemImage: "network")
@@ -221,11 +229,22 @@ private struct EditorTabBar: View {
   private func editorTab(_ tab: EditorTab) -> some View {
     let isSelected = model.selectedTabID == tab.id
     return HStack(spacing: 7) {
-      Image(systemName: "terminal")
+      Image(systemName: tab.schemaObject?.kind.symbol ?? "terminal")
         .font(.caption)
         .foregroundStyle(isSelected ? SolnariTheme.indigo : .secondary)
       Text(settings.text(tab.title))
         .font(.system(size: 12, weight: isSelected ? .medium : .regular))
+        .italic(tab.isPreview)
+      if tab.isPreview {
+        Button {
+          model.pinTab(tab.id)
+        } label: {
+          Image(systemName: "pin")
+        }
+        .buttonStyle(.plain)
+        .help(settings.text("Pin tab"))
+        .accessibilityLabel(settings.text("Pin tab"))
+      }
       if tab.isModified {
         Circle()
           .fill(.secondary)
@@ -250,7 +269,22 @@ private struct EditorTabBar: View {
     }
     .overlay(alignment: .trailing) { Divider() }
     .contentShape(Rectangle())
+    .focusable()
+    .onKeyPress(.return) {
+      model.selectedTabID = tab.id
+      return .handled
+    }
     .onTapGesture { model.selectedTabID = tab.id }
+    .simultaneousGesture(TapGesture(count: 2).onEnded { model.pinTab(tab.id) })
+    .contextMenu {
+      Button(settings.text("Pin tab")) { model.pinTab(tab.id) }
+        .disabled(!tab.isPreview)
+      Button(settings.text("Close")) { model.closeTab(tab.id) }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(tab.title + (tab.isPreview ? " · " + settings.text("Preview") : ""))
+    .accessibilityAction(named: Text(settings.text("Open"))) { model.selectedTabID = tab.id }
+    .accessibilityAction(named: Text(settings.text("Pin tab"))) { model.pinTab(tab.id) }
   }
 }
 
@@ -307,11 +341,13 @@ private struct SQLEditorPane: View {
       .foregroundStyle(.secondary)
 
       Button {
+        model.explainCurrentQuery()
       } label: {
         Label(settings.text("Explain"), systemImage: "chart.bar.doc.horizontal")
       }
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)
+      .disabled(!model.canExplain)
 
       Spacer()
 
@@ -345,12 +381,13 @@ private struct SQLEditorPane: View {
     {
       HStack(spacing: 0) {
         lineNumbers(for: tab.sql)
-        TextEditor(text: model.sqlBinding(for: selectedTabID))
-          .font(.system(size: 13, weight: .regular, design: .monospaced))
-          .lineSpacing(5)
-          .scrollContentBackground(.hidden)
-          .padding(.horizontal, 9)
-          .padding(.vertical, 11)
+        SQLTextEditor(
+          text: model.sqlBinding(for: selectedTabID),
+          engine: model.selectedConnection?.engine ?? .postgresql,
+          formatRequestID: model.formatRequestID,
+          onError: { model.presentedError = $0 }
+        )
+        .id(selectedTabID)
       }
     } else {
       ContentUnavailableView {
@@ -386,6 +423,7 @@ private struct ResultsPane: View {
 
   @State private var columnWidths: [String: CGFloat] = [:]
   @State private var exportNotice: String?
+  @State private var planColumnWidths: [String: CGFloat] = [:]
 
   private var columns: [ResultColumn] {
     model.queryTable.columns.enumerated().map { index, title in
@@ -401,6 +439,8 @@ private struct ResultsPane: View {
       resultToolbar
       if model.selectedResultTab == "Results" {
         resultGrid
+      } else if model.selectedResultTab == "Explain" {
+        planResults
       } else {
         explainPlaceholder
       }
@@ -422,13 +462,15 @@ private struct ResultsPane: View {
           .font(.caption)
           .foregroundStyle(SolnariTheme.mint)
           .transition(.opacity)
-      } else {
+      } else if model.selectedResultTab != "Explain" {
         Text(settings.text(model.executionMessage))
           .font(.caption)
           .foregroundStyle(model.isRunning ? SolnariTheme.orange : .secondary)
       }
-      exportMenu
-      resultOptionsMenu
+      if model.selectedResultTab == "Results" {
+        exportMenu
+        resultOptionsMenu
+      }
     }
     .padding(.horizontal, 13)
     .frame(height: 39)
@@ -609,6 +651,55 @@ private struct ResultsPane: View {
           model.selectedResultTab == "Explain"
             ? "Run EXPLAIN to inspect the query plan." : "Server messages will appear here."))
     }
+  }
+
+  private var planResults: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text(settings.text(model.planMessage))
+          .font(.caption)
+          .textSelection(.enabled)
+        Spacer()
+        if model.isPlanning {
+          ProgressView().controlSize(.small)
+          Button(settings.text("Cancel")) { model.cancelQueryPlan() }
+            .help(settings.text("Cancel closes this connection."))
+        }
+        Button(settings.text("Copy plan SQL")) {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(model.planSQL, forType: .string)
+        }
+        .disabled(model.planSQL.isEmpty)
+      }
+      .padding(.horizontal, 13)
+      .padding(.top, 8)
+      ResultTableView(
+        table: model.planTable,
+        displayTimeZone: settings.displayTimeZone,
+        sourceObject: nil,
+        canGenerateDeleteQuery: false,
+        localizedText: settings.text,
+        onGenerateQuery: { _, _, _ in },
+        columnWidths: $planColumnWidths
+      )
+    }
+    .onAppear { fitPlanColumns() }
+    .onChange(of: model.planTable) { fitPlanColumns() }
+  }
+
+  private func fitPlanColumns() {
+    let table = model.planTable
+    planColumnWidths = Dictionary(
+      uniqueKeysWithValues: table.columns.enumerated().map { index, title in
+        let values = table.rows.prefix(100).compactMap {
+          $0.indices.contains(index) ? $0[index] : nil
+        }
+        return (
+          "column-\(index)",
+          ResultColumnWidthCalculator.fittedWidth(
+            title: title, values: values, displayTimeZone: settings.displayTimeZone)
+        )
+      })
   }
 
   private func resetColumnWidths() {
