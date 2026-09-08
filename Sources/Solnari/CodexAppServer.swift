@@ -244,14 +244,18 @@ actor CodexAppServer {
     // 파일 하나의 접근만 허용하면 로그인 키체인을 열어도 인증 저장에 실패합니다.
     let keychains = FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent("Library/Keychains", isDirectory: true).resolvingSymlinksInPath().path
-    let profile =
-      "(version 1)(allow default)(deny file-read-data "
-      + protectedRoots.map { "(subpath \(quoted($0)))" }.joined(separator: " ")
-      + ")(allow file-read-data " + directoryLiterals.joined(separator: " ") + ")"
-      + "(allow file-read-data (subpath \(quoted(homePath))) (literal \(quoted(executable))))"
-      + "(deny process-exec)(allow process-exec (literal \(quoted(executable))))"
-      + "(deny file-write*)(allow file-write* (subpath \(quoted(homePath))) (literal \"/dev/null\"))"
-      + "(allow file-read-data file-write* (subpath \(quoted(keychains))))"
+    let protectedPaths = protectedRoots.map { "(subpath \(quoted($0)))" }.joined(separator: " ")
+    let ancestorPaths = directoryLiterals.joined(separator: " ")
+    let rules: [String] = [
+      "(version 1)(allow default)",
+      "(deny file-read-data \(protectedPaths))",
+      "(allow file-read-data \(ancestorPaths))",
+      "(allow file-read-data (subpath \(quoted(homePath))) (literal \(quoted(executable))))",
+      "(deny process-exec)(allow process-exec (literal \(quoted(executable))))",
+      "(deny file-write*)(allow file-write* (subpath \(quoted(homePath))) (literal \"/dev/null\"))",
+      "(allow file-read-data file-write* (subpath \(quoted(keychains))))",
+    ]
+    let profile = rules.joined()
     child.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
     var arguments = ["-p", profile, executable, "app-server", "--listen", "stdio://"]
     for (key, value) in CodexSessionPolicy.configuration.sorted(by: { $0.key < $1.key }) {
