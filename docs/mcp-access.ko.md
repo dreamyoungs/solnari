@@ -1,7 +1,7 @@
 # 외부 Agent용 MCP 접근
 
 Solnari는 로컬 Codex desktop app, CLI 또는 IDE extension이 현재 앱에서 선택한 database를
-제한적으로 탐색할 수 있는 STDIO MCP server를 제공합니다. 앱 내부 Codex chat prototype과는
+연결 권한에 따라 조회·변경할 수 있는 STDIO MCP server를 제공합니다. 앱 내부 Codex SQL 어시스턴트와는
 별개의 기능입니다.
 
 OpenAI 공식 문서에 따르면 로컬 Codex client는 STDIO MCP server를 직접 실행할 수 있고,
@@ -45,19 +45,37 @@ socket으로 정형화된 요청만 전달합니다.
 | `solnari_list_schema` | 현재 연결의 table, view, materialized view와 function 목록 |
 | `solnari_describe_object` | column, index, constraint, comment와 definition 조회 |
 | `solnari_execute_read_query` | 읽기 전용 profile에서 단일 read query 실행 |
+| `solnari_execute_query` | 쓰기 허용 profile에서 조회·변경 SQL 실행 |
 
-모든 도구는 MCP `readOnlyHint`를 사용합니다. 쿼리 도구는 Codex의 approval 설정과 별개로
-Solnari에서도 다음 조건을 모두 검사합니다.
+읽기 도구는 MCP `readOnlyHint: true`를 사용합니다. `solnari_execute_query`는
+`readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`로 선언됩니다.
+두 실행 도구 모두 Solnari에서 다음 조건을 검사합니다.
 
 - MCP 접근이 켜져 있음
 - Mac이 잠금·절전 상태가 아님
 - 앱에서 선택한 profile이 이미 연결됨
-- profile access level이 `Read-only`
-- SQL 사전 검사가 단일 read statement로 판정함
-- database session 자체도 write를 거부하도록 설정됨
+- 다른 쿼리나 실행 계획이 실행 중이지 않음
+- profile의 표시 권한과 실제 연결된 DB session의 권한이 도구의 요구 권한과 일치함
+
+`solnari_execute_read_query`는 `Read-only` 연결에서 기존 SQL 사전 검사와 DB session의 쓰기
+차단을 적용합니다. `solnari_execute_query`는 `Read / Write` 연결에서만 실행되며, 쓰기 허용
+연결의 SELECT 조회에도 이 도구를 사용합니다. `Migration` 권한은 허용하지 않습니다.
+
+쓰기 실행 전 `solnari_get_active_connection`의 `connectionID`를 가져와 요청에 포함해야 합니다.
+사용자가 그 사이 다른 연결을 선택하면 거부됩니다. 접근 권한을 변경할 때는 연결 편집에서
+저장·재연결해야 하며, 화면의 값만 바뀌어도 이전 읽기 전용 세션의 권한이 상승하지 않습니다.
+
+MCP 접근을 켜고 연결에서 쓰기를 허용하면 INSERT·UPDATE·DELETE·DDL이 DB 계정의 권한 범위에서
+즉시 실행됩니다. Solnari에 별도의 건별 승인창은 없으며 외부 MCP 클라이언트의 승인 정책은
+그대로 적용됩니다. 시간 초과나 통신 오류 후에는 실행이 이미 완료됐을 수 있으므로 자동으로
+재시도하지 말고 DB 상태를 먼저 확인해야 합니다.
 
 응답은 기본 50행, 최대 200행이며 cell당 16 KiB와 전체 응답 2 MB 상한을 적용합니다. 큰
 query에는 명시적인 작은 `LIMIT`과 필요한 column만 사용해야 합니다.
+`maxRows`와 `returnedRowCount`는 반환 결과 행에 관한 값이며, 변경되는 행의 수를 제한하거나
+보고하는 값은 아닙니다. 결과 행이 없어도 변경 SQL은 성공했을 수 있습니다.
+쓰기 실행 결과가 2 MB를 넘으면 이미 완료된 변경을 실패로 표시하지 않고, 결과 데이터를
+생략한 `truncated: true` 성공 응답을 반환합니다.
 
 ## 제공하지 않는 정보
 
@@ -70,7 +88,7 @@ MCP 응답에는 다음 항목을 넣지 않습니다.
 - 다른 저장 연결 또는 현재 선택하지 않은 database의 schema
 
 현재 연결 이름, engine, database 이름, access level, server version·encoding·time zone, schema와
-사용자가 요청한 read query 결과는 MCP 기능의 목적상 외부 Agent context에 포함될 수 있습니다.
+사용자가 요청한 query 결과는 MCP 기능의 목적상 외부 Agent context에 포함될 수 있습니다.
 
 ## lifecycle과 한계
 
@@ -80,5 +98,5 @@ MCP 응답에는 다음 항목을 넣지 않습니다.
 - 화면 잠금, 절전, 사용자 session 전환과 앱 종료 시 socket을 닫습니다.
 - MCP server는 외부 process를 실행하지 않으며 `gcloud`나 proxy fallback을 추가하지 않습니다.
 - 같은 macOS 사용자 권한을 탈취한 악성 process까지 격리하는 보안 경계는 아닙니다.
-- SQL lexer는 완전한 dialect parser가 아니므로 실제 database role도 최소 읽기 권한이어야 합니다.
-- remote Streamable HTTP와 OAuth, write tool, migration, 자동 승인 기능은 제공하지 않습니다.
+- SQL lexer는 완전한 dialect parser가 아니므로 DB role도 필요한 최소 권한으로 구성해야 합니다.
+- remote Streamable HTTP와 OAuth, migration 전용 모드, Solnari의 건별 승인 기능은 제공하지 않습니다.

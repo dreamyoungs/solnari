@@ -10,7 +10,7 @@ describe("Solnari MCP server", () => {
     while (closeOperations.length > 0) await closeOperations.pop()?.();
   });
 
-  it("publishes only read-only tools with explicit annotations", async () => {
+  it("marks write-capable execution as destructive and non-idempotent", async () => {
     const bridge: SolnariBridge = {
       call: vi.fn(async () => ({ status: "ready" })),
     };
@@ -31,11 +31,14 @@ describe("Solnari MCP server", () => {
       "solnari_get_active_connection",
       "solnari_list_schema",
       "solnari_describe_object",
+      "solnari_execute_query",
       "solnari_execute_read_query",
     ]);
     for (const tool of tools.tools) {
-      expect(tool.annotations?.readOnlyHint).toBe(true);
-      expect(tool.annotations?.destructiveHint).toBe(false);
+      const canWrite = tool.name === "solnari_execute_query";
+      expect(tool.annotations?.readOnlyHint).toBe(!canWrite);
+      expect(tool.annotations?.destructiveHint).toBe(canWrite);
+      expect(tool.annotations?.idempotentHint).toBe(!canWrite);
     }
   });
 
@@ -69,6 +72,20 @@ describe("Solnari MCP server", () => {
     expect(response.structuredContent).toEqual({
       data: { name: "Development", status: "Connected" },
     });
+
+    const query = {
+      connectionID: "00000000-0000-4000-8000-000000000001",
+      sql: "UPDATE notes SET title = 'example' WHERE id = 1",
+      maxRows: 10,
+    };
+    await client.callTool({ name: "solnari_execute_query", arguments: query });
+    expect(call).toHaveBeenCalledWith("executeQuery", query);
+    call.mockRejectedValueOnce(new Error("Read / Write access is required."));
+    const denied = await client.callTool({
+      name: "solnari_execute_query",
+      arguments: query,
+    });
+    expect(denied.isError).toBe(true);
   });
 
   it("rejects invalid arguments before they reach Solnari", async () => {
@@ -89,6 +106,18 @@ describe("Solnari MCP server", () => {
       arguments: { sql: "", maxRows: 10_000 },
     });
     expect(response.isError).toBe(true);
+    expect(call).not.toHaveBeenCalled();
+    for (const args of [
+      { sql: "DELETE FROM notes" },
+      { connectionID: "not-a-uuid", sql: "DELETE FROM notes" },
+      { connectionID: "00000000-0000-4000-8000-000000000001", sql: "   " },
+    ]) {
+      const invalid = await client.callTool({
+        name: "solnari_execute_query",
+        arguments: args,
+      });
+      expect(invalid.isError).toBe(true);
+    }
     expect(call).not.toHaveBeenCalled();
   });
 });

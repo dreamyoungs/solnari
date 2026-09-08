@@ -19,7 +19,7 @@ To verify a published checksum from Terminal, place the DMG and its `.sha256` fi
 folder, then run the following command. Do not open the DMG unless the result says `OK`.
 
 ```bash
-shasum -a 256 -c Solnari-0.3.0-macos-arm64-unsigned.dmg.sha256
+shasum -a 256 -c Solnari-0.4.0-macos-arm64-unsigned.dmg.sha256
 ```
 
 ## 2. Acknowledge the first-launch warning

@@ -38,9 +38,10 @@ credential·token·private hostname·project/cluster/database 식별자·운영 
 - 외부 Agent용 MCP는 기본적으로 꺼져 있으며, 활성화해도 사용자 전용 `0600` local socket과
   현재 선택한 연결만 사용합니다. credential, host, username, SSH 정보와 Cloud project ID는
   MCP 응답에 포함하지 않습니다.
-- MCP query tool은 이미 연결된 읽기 전용 profile만 허용하고 응답 행·cell·전체 byte 상한을
+- MCP 조회 도구는 읽기 전용 profile만, 쓰기 실행 도구는 쓰기 허용 profile만 사용합니다.
+  실행 직전에 선택한 연결 ID와 실제 DB session 권한을 확인하고 응답 행·cell·전체 byte 상한을
   적용합니다. Mac 잠금·절전·사용자 전환과 앱 종료 시 MCP socket을 닫습니다.
-- Codex UI는 현재 local prototype이며 prompt, SQL, schema와 result를 외부 App Server에 보내지 않습니다.
+- 앱 내부 Codex SQL 어시스턴트는 사용자가 선택한 문맥을 전송하며, SQL 제안은 검토 후 새 쿼리 탭에 넣습니다.
 
 ## 현재 한계
 

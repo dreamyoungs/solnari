@@ -12,6 +12,8 @@ enum MCPAccessError: LocalizedError {
   case noSelectedConnection
   case connectionNotReady
   case readOnlyConnectionRequired
+  case readWriteConnectionRequired
+  case selectedConnectionChanged
   case schemaObjectNotFound
   case responseTooLarge
   case queryAlreadyRunning
@@ -24,6 +26,10 @@ enum MCPAccessError: LocalizedError {
       "The selected Solnari connection must already be connected."
     case .readOnlyConnectionRequired:
       "MCP query execution is available only for a read-only Solnari connection."
+    case .readWriteConnectionRequired:
+      "Enable Read / Write on this connection in Solnari and reconnect before executing this MCP query."
+    case .selectedConnectionChanged:
+      "The selected connection has changed. Get the active connection again before executing SQL."
     case .schemaObjectNotFound:
       "The requested schema object is not available in the selected connection."
     case .responseTooLarge:
@@ -35,6 +41,7 @@ enum MCPAccessError: LocalizedError {
 }
 
 struct MCPConnectionSnapshot: Codable, Sendable {
+  let connectionID: UUID
   let name: String
   let database: String
   let engine: String
@@ -214,6 +221,9 @@ final class MCPAccessController: ObservableObject {
   }
 
   private func handle(_ request: MCPBridgeRequest) async -> MCPBridgeResponse {
+    guard isEnabled, state == .ready else {
+      return .failure(id: request.id, message: "Local MCP access is disabled or suspended.")
+    }
     do {
       let result: String
       switch request.method {
@@ -232,6 +242,13 @@ final class MCPAccessController: ObservableObject {
             kind: params.kind.flatMap(SchemaObjectKind.init(rawValue:))
           )
         )
+      case "executeQuery":
+        let params = try decode(ExecuteQueryParameters.self, from: request.paramsJSON)
+        let snapshot = try await workspace.mcpExecuteQuery(
+          connectionID: params.connectionID, sql: params.sql,
+          maximumRows: min(max(params.maxRows ?? 50, 1), 200)
+        )
+        result = try Self.encodeExecutedQuery(snapshot)
       case "executeReadQuery":
         let params = try decode(ExecuteReadQueryParameters.self, from: request.paramsJSON)
         let maximumRows = min(max(params.maxRows ?? 50, 1), 200)
@@ -260,6 +277,7 @@ final class MCPAccessController: ObservableObject {
 
   private func connectionSnapshot(from profile: ConnectionProfile) -> MCPConnectionSnapshot {
     MCPConnectionSnapshot(
+      connectionID: profile.id,
       name: profile.name,
       database: profile.database,
       engine: profile.engine.rawValue,
@@ -270,6 +288,17 @@ final class MCPAccessController: ObservableObject {
       serverEncoding: profile.serverEncoding,
       serverTimeZone: profile.serverTimeZone
     )
+  }
+
+  static func encodeExecutedQuery(_ snapshot: MCPQuerySnapshot) throws -> String {
+    let encoder = JSONEncoder()
+    let data = try encoder.encode(snapshot)
+    if data.count <= maximumResultBytes { return String(decoding: data, as: UTF8.self) }
+    // 이미 완료된 쓰기를 응답 크기 오류로 보고하면 클라이언트가 재실행할 수 있습니다.
+    let summary = MCPQuerySnapshot(
+      columns: [], rows: [], returnedRowCount: 0, truncated: true,
+      durationMilliseconds: snapshot.durationMilliseconds)
+    return String(decoding: try encoder.encode(summary), as: UTF8.self)
   }
 
   private func encode<T: Encodable>(_ value: T) throws -> String {
@@ -294,6 +323,12 @@ private struct DescribeObjectParameters: Decodable {
 }
 
 private struct ExecuteReadQueryParameters: Decodable {
+  let sql: String
+  let maxRows: Int?
+}
+
+private struct ExecuteQueryParameters: Decodable {
+  let connectionID: UUID
   let sql: String
   let maxRows: Int?
 }

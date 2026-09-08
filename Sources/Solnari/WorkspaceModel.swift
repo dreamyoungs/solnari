@@ -690,19 +690,50 @@ final class WorkspaceModel: ObservableObject {
     guard profile.effectiveAccessLevel == .readOnly else {
       throw MCPAccessError.readOnlyConnectionRequired
     }
-    guard !workspace(for: profile.id).isRunning else {
+    try QuerySafetyPolicy.validate(sql: sql, accessLevel: .readOnly)
+    return try await executeMCPQuery(
+      profile: profile, sql: sql, maximumRows: maximumRows, accessLevel: .readOnly)
+  }
+
+  func mcpExecuteQuery(connectionID: UUID, sql: String, maximumRows: Int) async throws
+    -> MCPQuerySnapshot
+  {
+    let profile = try requireMCPConnection()
+    guard profile.id == connectionID else { throw MCPAccessError.selectedConnectionChanged }
+    guard profile.effectiveAccessLevel == .readWrite else {
+      throw MCPAccessError.readWriteConnectionRequired
+    }
+    return try await executeMCPQuery(
+      profile: profile, sql: sql, maximumRows: maximumRows, accessLevel: .readWrite)
+  }
+
+  private func executeMCPQuery(
+    profile: ConnectionProfile, sql: String, maximumRows: Int, accessLevel: DatabaseAccessLevel
+  ) async throws -> MCPQuerySnapshot {
+    guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, sql.utf16.count <= 200_000
+    else {
+      throw SolnariDatabaseError.queryNotAllowedForAccessLevel
+    }
+    guard !workspace(for: profile.id).isRunning, !connectingProfileIDs.contains(profile.id) else {
       throw MCPAccessError.queryAlreadyRunning
     }
-    try QuerySafetyPolicy.validate(sql: sql, accessLevel: .readOnly)
     updateWorkspace(for: profile.id) { $0.isRunning = true }
     defer { updateWorkspace(for: profile.id) { $0.isRunning = false } }
-    let result = try await backend.execute(profileID: profile.id, sql: sql)
-    let rows = result.table.rows.prefix(maximumRows)
+    let result = try await backend.execute(
+      profileID: profile.id, sql: sql, requiredAccessLevel: accessLevel)
+    if accessLevel == .readWrite,
+      let snapshot = try? await backend.loadSchema(profileID: profile.id),
+      !areConnectionOperationsSuspended,
+      connections.first(where: { $0.id == profile.id })?.status == .connected
+    {
+      updateWorkspace(for: profile.id) { $0.schema = snapshot }
+    }
+    let rows = result.table.rows.prefix(min(max(maximumRows, 1), 200))
     return MCPQuerySnapshot(
       columns: result.table.columns,
       rows: rows.map { $0.map(MCPQueryCell.init) },
       returnedRowCount: rows.count,
-      truncated: result.table.rows.count > maximumRows,
+      truncated: result.table.rows.count > rows.count,
       durationMilliseconds: result.durationMilliseconds
     )
   }

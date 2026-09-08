@@ -454,3 +454,7 @@
 "Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded." = "비밀번호는 Solnari 로컬 보관소에 암호화해 저장합니다. Codex와 공유할 SQL·스키마·결과 행은 직접 선택하며, 연결 인증 정보는 제외합니다.";
 
 "Checking Codex account…" = "Codex 계정을 확인하는 중…";
+
+"MCP queries follow the selected connection's access level." = "MCP 쿼리는 선택한 연결의 접근 권한을 따릅니다.";
+
+"Read / Write connections also allow MCP changes without an extra Solnari confirmation." = "쓰기 허용 연결에서는 별도의 Solnari 확인 없이 MCP 변경 쿼리도 실행됩니다.";

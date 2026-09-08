@@ -147,9 +147,14 @@ actor DatabaseBackend {
     }
   }
 
-  func execute(profileID: UUID, sql: String) async throws -> QueryExecutionResult {
+  func execute(
+    profileID: UUID, sql: String, requiredAccessLevel: DatabaseAccessLevel? = nil
+  ) async throws -> QueryExecutionResult {
     guard let profile = connectedProfiles[profileID] else {
       throw SolnariDatabaseError.notConnected
+    }
+    if let requiredAccessLevel, profile.effectiveAccessLevel != requiredAccessLevel {
+      throw SolnariDatabaseError.queryNotAllowedForAccessLevel
     }
     try QuerySafetyPolicy.validate(sql: sql, accessLevel: profile.effectiveAccessLevel)
     if profile.transport == .cloudSQL {

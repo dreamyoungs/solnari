@@ -20,8 +20,8 @@
 </p>
 
 > [!NOTE]
-> 현재 버전은 **0.3.0 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
-> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0). Apple
+> 현재 버전은 **0.4.0 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
+> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.4.0). Apple
 > Developer Program 가입 전까지는 Developer ID 서명·notarization되지 않으므로 최초 실행 시
 > 아래의 macOS 보안 승인 절차가 필요합니다.
 
@@ -74,7 +74,7 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - 한국어·영어 런타임 전환과 macOS light/dark appearance
 - 앱 중복 실행 방지와 종료·잠금·절전·사용자 전환 시 연결 세션 정리
 - 읽기 전용 profile의 보수적인 SQL 사전 검사와 DB session 쓰기 차단
-- 현재 선택한 연결의 metadata·schema와 읽기 전용 query tool을 외부 Codex에 제공하는 opt-in local MCP server
+- 현재 선택한 연결의 metadata·schema와 연결 권한에 따른 조회·쓰기 query tool을 외부 Codex에 제공하는 opt-in local MCP server
 - [안전한 실행 계획 조회](docs/query-plans.md) 및 원본 SQL 보존
 - [스키마 미리보기·고정 탭](docs/schema-tabs.md)
 - [DB 문법별 로컬 SQL 정렬](docs/sql-formatting.md), 선택 복원 및 실행 취소
@@ -145,7 +145,7 @@ Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리�
 - dialect-aware SQL parser, 공통 timeout, query cancel과 결과/export 상한
 - 운영 DML/DDL 승인과 일회성 write capability
 - 인증된 전용 테스트 계정을 통한 Codex 응답·로그인 흐름의 종단 검증 확대
-- MCP write capability와 사람의 일회성 승인 workflow
+- MCP 쓰기에 대한 사람의 일회성 승인 workflow
 - GitHub Release 자동 배포와 Intel Mac build
 - 테이블 데이터 수정과 더 넓은 DB 객체 탐색
 
@@ -155,8 +155,8 @@ Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리�
 
 ### Apple Silicon용 DMG로 설치하기
 
-[Solnari 0.3.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0)에서
-`Solnari-0.3.0-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
+[Solnari 0.4.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.4.0)에서
+`Solnari-0.4.0-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
 Program에 가입하지 않고 만든 무료 오픈소스 preview라서 ad-hoc 서명되어 있고 Apple의
 notarization을 받지 않았습니다. Apple Silicon Mac에서 다음 순서로 최초 실행을 승인합니다.
 
@@ -247,7 +247,7 @@ Apple Developer Program 가입 없이 테스트용 DMG를 만들 수 있습니�
 ./Scripts/package-local-dmg.sh
 ```
 
-결과는 `.build/release/Solnari-0.3.0-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
+결과는 `.build/release/Solnari-0.4.0-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
 GitHub Release의 preview와 동일하게 ad-hoc 서명 앱을 포함하며 notarization되지 않았습니다.
 생성 스크립트는 660×400 Finder 창, 앱과 응용 프로그램 바로가기의 고정 위치, Retina 배경,
 전용 볼륨 아이콘을 적용하고, 패키지 내용과 마운트·해제를 자동 검증합니다.
@@ -275,7 +275,7 @@ export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
 ./Scripts/package-release.sh
 ```
 
-결과는 `.build/release/Solnari-0.3.0-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
+결과는 `.build/release/Solnari-0.4.0-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
 Developer ID로 서명하고 DMG를 notarization한 뒤 ticket을 staple합니다. 가입 전에는 이
 script의 인증서·notary 사전 검사를 통과할 수 없습니다.
 
@@ -291,9 +291,9 @@ notarization을 적용합니다.
 ### 외부 Codex에서 연결하기
 
 앱의 `설정 → MCP 접근`에서 local MCP를 켜고 표시되는 Codex 등록 명령을 한 번 실행합니다.
-그 뒤 Codex를 재시작하면 현재 Solnari에서 선택한 연결의 정제된 metadata·schema와 읽기 전용
-query 도구를 사용할 수 있습니다. MCP는 새 설치에서 꺼져 있고, query는 이미 연결된
-`Read-only` profile에만 허용됩니다. 자세한 범위와 제한은
+그 뒤 Codex를 재시작하면 현재 Solnari에서 선택한 연결의 정제된 metadata·schema와
+query 도구를 사용할 수 있습니다. MCP는 새 설치에서 꺼져 있고, 이미 연결된 profile의 권한을
+따릅니다. `Read-only`는 조회만, `Read / Write`는 조회·변경 SQL 실행을 허용합니다. 자세한 범위와 제한은
 [외부 Agent용 MCP 접근](docs/mcp-access.ko.md)을 확인해 주세요.
 
 ## 검증

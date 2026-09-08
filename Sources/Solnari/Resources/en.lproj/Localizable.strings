@@ -149,3 +149,7 @@
 "Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded." = "Passwords are encrypted in Solnari's local vault. You choose which SQL, schema and result rows to share with Codex; connection credentials are excluded.";
 
 "Checking Codex account…" = "Checking Codex account…";
+
+"MCP queries follow the selected connection's access level." = "MCP queries follow the selected connection's access level.";
+
+"Read / Write connections also allow MCP changes without an extra Solnari confirmation." = "Read / Write connections also allow MCP changes without an extra Solnari confirmation.";

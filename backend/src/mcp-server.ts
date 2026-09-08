@@ -37,16 +37,18 @@ export const createSolnariMCPServer = (
       title: "Solnari Database Tools",
       version: "0.1.0",
       description:
-        "Read-only access to the database connection currently selected in Solnari.",
+        "Database access governed by the connection permissions selected in Solnari.",
       websiteUrl: "https://github.com/dreamyoungs/solnari",
     },
     {
       instructions:
         "Solnari exposes only the database connection currently selected in its macOS app. " +
         "Never request credentials, hosts, usernames, or cloud project identifiers. Call " +
-        "solnari_get_active_connection before schema tools. Query execution requires that the " +
-        "user selected and connected a read-only profile in Solnari; use small LIMIT values and " +
-        "never attempt writes, DDL, locks, transactions, or privilege changes.",
+        "solnari_get_active_connection before querying. On Read-only profiles use " +
+        "solnari_execute_read_query. On Read / Write profiles use solnari_execute_query with the " +
+        "returned connectionID. Solnari checks the selected connection and its live session " +
+        "permissions before execution. Writes execute immediately; never automatically retry " +
+        "after timeouts or transport errors. Use small LIMIT values for result queries.",
     },
   );
 
@@ -110,6 +112,42 @@ export const createSolnariMCPServer = (
       annotations: readOnlyAnnotations,
     },
     async (params) => result(bridge.call("describeObject", params)),
+  );
+
+  server.registerTool(
+    "solnari_execute_query",
+    {
+      title: "Execute SQL on a write-enabled connection",
+      description:
+        "Execute SQL, including reads, INSERT, UPDATE, DELETE, and DDL, only when the selected " +
+        "Solnari connection is already connected with Read / Write access. Pass connectionID " +
+        "from solnari_get_active_connection; a changed selection or read-only session is rejected. " +
+        "Changes execute immediately under the database role's permissions. An empty result " +
+        "can mean a successful write; returnedRowCount is not an affected-row count. " +
+        "Do not automatically retry after a timeout or transport error.",
+      inputSchema: z.object({
+        connectionID: z
+          .uuid()
+          .describe("ID returned by solnari_get_active_connection."),
+        sql: z.string().trim().min(1).max(200_000).describe("SQL to execute."),
+        maxRows: z
+          .number()
+          .int()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe(
+            "Maximum result rows returned, not a limit on rows changed. Defaults to 50.",
+          ),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async (params) => result(bridge.call("executeQuery", params)),
   );
 
   server.registerTool(

@@ -47,7 +47,13 @@ struct MCPSettingsView: View {
           )
           scopeRow(
             symbol: "eye.fill",
-            text: settings.text("Query tools require an already connected read-only profile.")
+            text: settings.text("MCP queries follow the selected connection's access level.")
+          )
+          scopeRow(
+            symbol: "pencil.and.outline",
+            text: settings.text(
+              "Read / Write connections also allow MCP changes without an extra Solnari confirmation."
+            )
           )
         }
         .padding(.vertical, 4)

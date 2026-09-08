@@ -5,6 +5,13 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.4.0 Apple Silicon preview] - 2026-09-08
+
+### Added
+
+- MCP SQL execution on explicitly selected Read / Write connections, with connection-ID checks
+  and live-session permission enforcement. Read-only MCP query tools keep their existing limits.
+
 ## [0.3.0 Apple Silicon preview] - 2026-09-08
 
 ### Added
@@ -84,7 +91,8 @@ All notable changes to Solnari are documented here. The project follows
 - Table data editing, query cancellation, organization-managed policies, and full orphan recovery
   remain in progress.
 
-[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.4.0...HEAD
+[0.4.0 Apple Silicon preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.4.0
 [0.3.0 Apple Silicon preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0
 [0.2.1 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.1
 [0.2.0 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.0
