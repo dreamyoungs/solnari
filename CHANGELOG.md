@@ -5,6 +5,16 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.5.0 Apple Silicon preview] - 2026-09-11
+
+### Added
+
+- Personal Cloud SQL IAM authentication through existing Kubernetes Proxy resources for PostgreSQL.
+  Local ADC provides a temporary login token at connection/test/reconnection time without saving
+  it in the password vault or exported profiles. The Proxy must disable automatic IAM login.
+- Existing password profiles remain compatible. Background pool credential rotation is not yet
+  supported; reconnect if a new physical connection is needed after token expiry.
+
 ## [0.4.0 Apple Silicon preview] - 2026-09-08
 
 ### Added

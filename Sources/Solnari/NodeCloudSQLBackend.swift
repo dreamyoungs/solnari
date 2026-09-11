@@ -51,6 +51,16 @@ actor NodeCloudSQLBackend {
     self.client = client
   }
 
+  private struct LoginTokenResponse: Decodable, Sendable {
+    let token: String
+  }
+
+  func loginToken() async throws -> String {
+    let response: LoginTokenResponse = try await client.call(
+      method: "cloudSql.loginToken", params: EmptyParameters())
+    return response.token
+  }
+
   func testConnection(profile: ConnectionProfile, password: String) async throws
     -> ConnectionMetadata
   {

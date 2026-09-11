@@ -497,7 +497,23 @@ struct NewConnectionView: View {
             text: $draft.kubernetesRemotePort, width: 110)
         }
         databaseCredentialFields
-        passwordField
+        if draft.engine == .postgresql {
+          Toggle(
+            settings.text("Use personal Cloud SQL IAM authentication"), isOn: $draft.usePersonalIAM
+          )
+          .onChange(of: draft.usePersonalIAM) { draft.password = "" }
+        }
+        if draft.usesPersonalIAM {
+          Text(
+            settings.text(
+              "Enter your IAM database username. Local ADC supplies a temporary token; the Proxy must disable automatic IAM authentication."
+            )
+          )
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+        } else {
+          passwordField
+        }
       } else {
         HStack(spacing: 14) {
           labeledField("Database host", placeholder: "postgres.private", text: $draft.host)
@@ -1057,7 +1073,9 @@ struct NewConnectionView: View {
     HStack(spacing: 14) {
       labeledField("Database", placeholder: "app_production", text: $draft.database)
       labeledField(
-        "Database user", placeholder: draft.engine == .mysql ? "root" : "postgres",
+        draft.usesPersonalIAM ? "IAM database user" : "Database user",
+        placeholder: draft.usesPersonalIAM
+          ? "you@example.com" : (draft.engine == .mysql ? "root" : "postgres"),
         text: $draft.user)
     }
   }

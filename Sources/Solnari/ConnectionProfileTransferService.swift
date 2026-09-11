@@ -129,7 +129,7 @@ enum ConnectionProfileTransferService {
         connection["kubernetes"],
         allowed: [
           "context", "namespace", "relayImage", "connectionMode", "resourceKind",
-          "resourceName", "remotePort",
+          "resourceName", "remotePort", "usePersonalIAM",
         ],
         context: "\(context).kubernetes"
       )
@@ -316,6 +316,7 @@ private struct TransferKubernetesConfiguration: Codable {
   let resourceKind: KubernetesResourceKind?
   let resourceName: String?
   let remotePort: Int?
+  let usePersonalIAM: Bool?
 
   init(_ configuration: KubernetesConfiguration) {
     context = configuration.context
@@ -325,6 +326,7 @@ private struct TransferKubernetesConfiguration: Codable {
     resourceKind = configuration.resourceKind
     resourceName = configuration.resourceName
     remotePort = configuration.remotePort
+    usePersonalIAM = configuration.usePersonalIAM
   }
 
   var configuration: KubernetesConfiguration {
@@ -335,7 +337,8 @@ private struct TransferKubernetesConfiguration: Codable {
       connectionMode: connectionMode,
       resourceKind: resourceKind,
       resourceName: resourceName,
-      remotePort: remotePort
+      remotePort: remotePort,
+      usePersonalIAM: usePersonalIAM
     )
   }
 }

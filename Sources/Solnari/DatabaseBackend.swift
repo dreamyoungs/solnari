@@ -49,7 +49,8 @@ actor DatabaseBackend {
     let endpoint = try await transports.open(profile: profile)
     let resolved = resolvedProfile(profile, endpoint: endpoint)
     do {
-      let metadata = try await testEngine(resolved, password: password)
+      let credential = profile.usesPersonalIAM ? try await nodeCloudSQL.loginToken() : password
+      let metadata = try await testEngine(resolved, password: credential)
       await transports.close(profileID: profile.id)
       return metadata
     } catch {
@@ -78,7 +79,8 @@ actor DatabaseBackend {
     let endpoint = try await transports.open(profile: profile)
     let resolved = resolvedProfile(profile, endpoint: endpoint)
     do {
-      let metadata = try await connectEngine(resolved, password: password)
+      let credential = profile.usesPersonalIAM ? try await nodeCloudSQL.loginToken() : password
+      let metadata = try await connectEngine(resolved, password: credential)
       connectedEngines[profile.id] = profile.engine
       connectedProfiles[profile.id] = profile
       return metadata

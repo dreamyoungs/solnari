@@ -62,3 +62,26 @@ Helper processes belong to one connection UUID. A failed readiness check stops t
 removes any Kubernetes relay. Saving remains fail-closed: Solnari persists the profile only after
 the path, database metadata query, and schema discovery have all succeeded. Helper stderr is
 bounded before it is shown as an error, and credentials are excluded from commands and logs.
+
+### Personal Cloud SQL IAM login through an existing Kubernetes Proxy
+
+For PostgreSQL, enable **Use personal Cloud SQL IAM authentication** in the existing-resource
+Kubernetes form. Enter your IAM database username (a user's full email, or a service-account email
+without `.gserviceaccount.com`). The bundled Google Auth library obtains a login-scoped access token
+from local Application Default Credentials for every connection test and explicit connection or
+reconnection. The token travels only through the private Node stdio channel and in-memory database
+driver configuration; it is never saved in the password vault or connection exports. Selecting IAM
+and successfully saving an existing password profile removes its saved password.
+
+The target must be a Cloud SQL Auth Proxy with `--private-ip` and **without** `--auto-iam-authn`.
+The Proxy's Workload Identity authorizes the network connection (`roles/cloudsql.client`), while the
+local ADC principal authenticates to PostgreSQL. That principal needs Cloud SQL IAM database login
+permission, an instance IAM user/group registration, and the appropriate PostgreSQL grants.
+Kubernetes credentials control access to the port-forward separately. A Proxy can therefore serve
+multiple personal database identities without storing users' credentials in the cluster.
+
+Tokens are temporary. Existing authenticated database connections do not need periodic login, but
+if the native driver's pool needs to open another physical connection after token expiry, use
+**Connect** again to obtain a fresh token. Background pool credential rotation is not implemented.
+Password authentication remains available when personal IAM is disabled. MySQL and temporary relay
+connections do not expose this option.

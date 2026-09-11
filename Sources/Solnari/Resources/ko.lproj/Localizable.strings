@@ -458,3 +458,6 @@
 "MCP queries follow the selected connection's access level." = "MCP 쿼리는 선택한 연결의 접근 권한을 따릅니다.";
 
 "Read / Write connections also allow MCP changes without an extra Solnari confirmation." = "쓰기 허용 연결에서는 별도의 Solnari 확인 없이 MCP 변경 쿼리도 실행됩니다.";
+
+"Use personal Cloud SQL IAM authentication" = "개인 Cloud SQL IAM 인증 사용";
+"Enter your IAM database username. Local ADC supplies a temporary token; the Proxy must disable automatic IAM authentication." = "IAM DB 사용자명을 입력하세요. 로컬 ADC로 임시 토큰을 발급합니다. Proxy의 자동 IAM 인증은 꺼야 합니다.";
