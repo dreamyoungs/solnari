@@ -288,9 +288,9 @@ struct NewConnectionView: View {
           Image(systemName: "person.crop.circle.badge.checkmark")
             .foregroundStyle(SolnariTheme.indigo)
           VStack(alignment: .leading, spacing: 1) {
-            Text(settings.text("Google Cloud authentication"))
+            Text(settings.text("Cloud SQL connection authorization"))
               .font(.system(size: 12, weight: .medium))
-            Text(settings.text("Application Default Credentials"))
+            Text(settings.text("Google credentials on this Mac"))
               .font(.caption2)
               .foregroundStyle(.secondary)
           }
@@ -333,11 +333,13 @@ struct NewConnectionView: View {
         labeledField("Region", placeholder: "asia-northeast3", text: $draft.cloudRegion)
         labeledField("Cloud SQL instance", placeholder: "instance", text: $draft.cloudInstance)
       }
+      databaseLoginMethod(selection: $draft.useIAM)
       HStack(spacing: 14) {
         labeledField("Database", placeholder: "app_production", text: $draft.database)
         labeledField(
-          draft.useIAM ? "IAM database user" : "Database user",
-          placeholder: iamDatabaseUserPlaceholder,
+          draft.useIAM ? "IAM database user" : "Database login ID",
+          placeholder: draft.useIAM
+            ? iamDatabaseUserPlaceholder : (draft.engine == .mysql ? "root" : "postgres"),
           text: $draft.user
         )
       }
@@ -367,16 +369,7 @@ struct NewConnectionView: View {
         }
       }
       cloudDiscoveryStatus
-      Toggle(isOn: $draft.useIAM) {
-        Text(settings.text("Use automatic IAM database authentication"))
-      }
-      .font(.system(size: 12))
-      if draft.useIAM {
-        Text(settings.text("Automatic IAM authentication does not use a database password."))
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, alignment: .leading)
-      } else {
+      if !draft.useIAM {
         passwordField
       }
     }
@@ -496,23 +489,26 @@ struct NewConnectionView: View {
             "Remote port", placeholder: defaultPort,
             text: $draft.kubernetesRemotePort, width: 110)
         }
-        databaseCredentialFields
         if draft.engine == .postgresql {
-          Toggle(
-            settings.text("Use personal Cloud SQL IAM authentication"), isOn: $draft.usePersonalIAM
-          )
-          .onChange(of: draft.usePersonalIAM) { draft.password = "" }
+          databaseLoginMethod(selection: $draft.usePersonalIAM)
+            .onChange(of: draft.usePersonalIAM) { draft.password = "" }
         }
-        if draft.usesPersonalIAM {
-          Text(
-            settings.text(
-              "Enter your IAM database username. Local ADC supplies a temporary token; the Proxy must disable automatic IAM authentication."
-            )
-          )
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-        } else {
+        databaseCredentialFields
+        if !draft.usesPersonalIAM {
           passwordField
+        }
+        if draft.engine == .postgresql {
+          DisclosureGroup(settings.text("Connection permissions and Proxy setup")) {
+            Text(
+              settings.text(
+                "Kubernetes access uses your kubeconfig credentials. The Proxy uses its own Google account to reach Cloud SQL. The login method above selects the database account. For Google account login, the Proxy must run without --auto-iam-authn."
+              )
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+          .font(.caption)
         }
       } else {
         HStack(spacing: 14) {
@@ -1069,11 +1065,32 @@ struct NewConnectionView: View {
     )
   }
 
+  private func databaseLoginMethod(selection: Binding<Bool>) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+      fieldLabel("Database login")
+      Picker(settings.text("Database login"), selection: selection) {
+        Text(settings.text("Google account (IAM)")).tag(true)
+        Text(settings.text("Database ID and password")).tag(false)
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      Text(
+        settings.text(
+          selection.wrappedValue
+            ? "Sign in with Google credentials on this Mac. No database password is needed."
+            : "Sign in with a database ID such as postgres and its database password.")
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
   private var databaseCredentialFields: some View {
     HStack(spacing: 14) {
       labeledField("Database", placeholder: "app_production", text: $draft.database)
       labeledField(
-        draft.usesPersonalIAM ? "IAM database user" : "Database user",
+        draft.usesPersonalIAM ? "IAM database user" : "Database login ID",
         placeholder: draft.usesPersonalIAM
           ? "you@example.com" : (draft.engine == .mysql ? "root" : "postgres"),
         text: $draft.user)

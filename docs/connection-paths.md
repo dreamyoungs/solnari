@@ -65,7 +65,7 @@ bounded before it is shown as an error, and credentials are excluded from comman
 
 ### Personal Cloud SQL IAM login through an existing Kubernetes Proxy
 
-For PostgreSQL, enable **Use personal Cloud SQL IAM authentication** in the existing-resource
+For PostgreSQL, select **Google account (IAM)** under **Database login** in the existing-resource
 Kubernetes form. Enter your IAM database username (a user's full email, or a service-account email
 without `.gserviceaccount.com`). The bundled Google Auth library obtains a login-scoped access token
 from local Application Default Credentials for every connection test and explicit connection or
@@ -83,5 +83,5 @@ multiple personal database identities without storing users' credentials in the 
 Tokens are temporary. Existing authenticated database connections do not need periodic login, but
 if the native driver's pool needs to open another physical connection after token expiry, use
 **Connect** again to obtain a fresh token. Background pool credential rotation is not implemented.
-Password authentication remains available when personal IAM is disabled. MySQL and temporary relay
+Password authentication remains available by selecting **Database ID and password**. MySQL and temporary relay
 connections do not expose this option.
