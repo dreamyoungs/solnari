@@ -5,6 +5,14 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.5.1 Apple Silicon preview] - 2026-09-11
+
+### Improved
+
+- Replace IAM toggles with explicit Google account or database ID/password login choices.
+- Separate Cloud SQL connection authorization from database login, and place Kubernetes Proxy
+  setup details in an expandable help section. Authentication behavior remains unchanged.
+
 ## [0.5.0 Apple Silicon preview] - 2026-09-11
 
 ### Added

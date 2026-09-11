@@ -20,8 +20,8 @@
 </p>
 
 > [!NOTE]
-> 현재 버전은 **0.5.0 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
-> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.5.0). Apple
+> 현재 버전은 **0.5.1 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
+> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.5.1). Apple
 > Developer Program 가입 전까지는 Developer ID 서명·notarization되지 않으므로 최초 실행 시
 > 아래의 macOS 보안 승인 절차가 필요합니다.
 
@@ -155,8 +155,8 @@ Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리�
 
 ### Apple Silicon용 DMG로 설치하기
 
-[Solnari 0.5.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.5.0)에서
-`Solnari-0.5.0-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
+[Solnari 0.5.1 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.5.1)에서
+`Solnari-0.5.1-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
 Program에 가입하지 않고 만든 무료 오픈소스 preview라서 ad-hoc 서명되어 있고 Apple의
 notarization을 받지 않았습니다. Apple Silicon Mac에서 다음 순서로 최초 실행을 승인합니다.
 
@@ -247,7 +247,7 @@ Apple Developer Program 가입 없이 테스트용 DMG를 만들 수 있습니�
 ./Scripts/package-local-dmg.sh
 ```
 
-결과는 `.build/release/Solnari-0.5.0-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
+결과는 `.build/release/Solnari-0.5.1-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
 GitHub Release의 preview와 동일하게 ad-hoc 서명 앱을 포함하며 notarization되지 않았습니다.
 생성 스크립트는 660×400 Finder 창, 앱과 응용 프로그램 바로가기의 고정 위치, Retina 배경,
 전용 볼륨 아이콘을 적용하고, 패키지 내용과 마운트·해제를 자동 검증합니다.
@@ -275,7 +275,7 @@ export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
 ./Scripts/package-release.sh
 ```
 
-결과는 `.build/release/Solnari-0.5.0-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
+결과는 `.build/release/Solnari-0.5.1-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
 Developer ID로 서명하고 DMG를 notarization한 뒤 ticket을 staple합니다. 가입 전에는 이
 script의 인증서·notary 사전 검사를 통과할 수 없습니다.
 
