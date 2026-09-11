@@ -461,3 +461,14 @@
 
 "Use personal Cloud SQL IAM authentication" = "개인 Cloud SQL IAM 인증 사용";
 "Enter your IAM database username. Local ADC supplies a temporary token; the Proxy must disable automatic IAM authentication." = "IAM DB 사용자명을 입력하세요. 로컬 ADC로 임시 토큰을 발급합니다. Proxy의 자동 IAM 인증은 꺼야 합니다.";
+
+"Cloud SQL connection authorization" = "Cloud SQL 연결 권한";
+"Google credentials on this Mac" = "이 Mac의 Google 인증 정보 사용";
+"Database login" = "DB 로그인 방식";
+"Google account (IAM)" = "Google 계정으로 로그인 (IAM)";
+"Database ID and password" = "DB ID·비밀번호로 로그인";
+"Database login ID" = "DB 로그인 ID";
+"Sign in with Google credentials on this Mac. No database password is needed." = "이 Mac의 Google 인증 정보로 로그인합니다. DB 비밀번호는 필요 없습니다.";
+"Sign in with a database ID such as postgres and its database password." = "postgres 같은 DB ID와 해당 계정의 DB 비밀번호로 로그인합니다.";
+"Connection permissions and Proxy setup" = "연결 권한과 Proxy 설정 안내";
+"Kubernetes access uses your kubeconfig credentials. The Proxy uses its own Google account to reach Cloud SQL. The login method above selects the database account. For Google account login, the Proxy must run without --auto-iam-authn." = "K8s 접근에는 kubeconfig의 인증 정보를, Cloud SQL 연결에는 Proxy의 Google 계정을 사용합니다. 위에서 선택하는 것은 DB에 로그인할 계정입니다. Google 계정으로 로그인하려면 Proxy의 --auto-iam-authn 옵션을 꺼야 합니다.";
