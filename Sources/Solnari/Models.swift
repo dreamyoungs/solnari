@@ -172,6 +172,7 @@ struct KubernetesConfiguration: Hashable, Codable, Sendable {
   var resourceKind: KubernetesResourceKind?
   var resourceName: String?
   var remotePort: Int?
+  var usePersonalIAM: Bool?
 
   var effectiveConnectionMode: KubernetesConnectionMode {
     connectionMode ?? .temporaryRelay
@@ -184,7 +185,8 @@ struct KubernetesConfiguration: Hashable, Codable, Sendable {
     connectionMode: KubernetesConnectionMode? = nil,
     resourceKind: KubernetesResourceKind? = nil,
     resourceName: String? = nil,
-    remotePort: Int? = nil
+    remotePort: Int? = nil,
+    usePersonalIAM: Bool? = nil
   ) {
     self.context = context
     self.namespace = namespace
@@ -193,10 +195,17 @@ struct KubernetesConfiguration: Hashable, Codable, Sendable {
     self.resourceKind = resourceKind
     self.resourceName = resourceName
     self.remotePort = remotePort
+    self.usePersonalIAM = usePersonalIAM
   }
 }
 
 struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
+  var usesPersonalIAM: Bool {
+    transport == .kubernetes && engine == .postgresql
+      && kubernetes?.effectiveConnectionMode == .existingResource
+      && kubernetes?.usePersonalIAM == true
+  }
+
   let id: UUID
   var name: String
   var database: String
@@ -593,6 +602,7 @@ struct ConnectionDraft: Equatable, Sendable {
   var sshHost = ""
   var sshPort = "22"
   var sshUser = ""
+  var usePersonalIAM = false
   var kubeContext = ""
   var namespace = "default"
   var kubernetesMode: KubernetesConnectionMode = .existingResource
@@ -630,6 +640,7 @@ struct ConnectionDraft: Equatable, Sendable {
       sshUser = ssh.username
     }
     if let kubernetes = profile.kubernetes {
+      usePersonalIAM = kubernetes.usePersonalIAM ?? false
       kubeContext = kubernetes.context
       namespace = kubernetes.namespace
       kubernetesMode = kubernetes.effectiveConnectionMode
@@ -665,8 +676,17 @@ struct ConnectionDraft: Equatable, Sendable {
     engine != .sqlite || transport == .direct
   }
 
+  var usesPersonalIAM: Bool {
+    transport == .kubernetes && engine == .postgresql
+      && kubernetesMode == .existingResource && usePersonalIAM
+  }
+
+  var usesEphemeralCredentials: Bool {
+    (transport == .cloudSQL && useIAM) || usesPersonalIAM
+  }
+
   var connectionPassword: String {
-    transport == .cloudSQL && useIAM ? "" : password
+    usesEphemeralCredentials ? "" : password
   }
 
   var testValidationIssues: [ConnectionDraftValidationIssue] {
@@ -771,7 +791,8 @@ struct ConnectionDraft: Equatable, Sendable {
           resourceName: kubernetesMode == .existingResource
             ? kubernetesResourceName.trimmed : nil,
           remotePort: kubernetesMode == .existingResource
-            ? Int(kubernetesRemotePort) : nil
+            ? Int(kubernetesRemotePort) : nil,
+          usePersonalIAM: usesPersonalIAM ? true : nil
         ) : nil,
       preferredCharacterSet: preferredCharacterSet,
       preferredCollation: preferredCollation,

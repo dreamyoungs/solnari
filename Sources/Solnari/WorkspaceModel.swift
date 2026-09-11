@@ -344,7 +344,7 @@ final class WorkspaceModel: ObservableObject {
         throw SolnariDatabaseError.notConnected
       }
       let loadedSchema = try await backend.loadSchema(profileID: profile.id)
-      if draft.transport == .cloudSQL && draft.useIAM {
+      if draft.usesEphemeralCredentials {
         try passwordStore.delete(for: profile.id)
       } else if !draft.password.isEmpty || profileID == nil {
         try passwordStore.save(draft.connectionPassword, for: profile.id)
@@ -384,7 +384,7 @@ final class WorkspaceModel: ObservableObject {
     for draft: ConnectionDraft,
     replacing profileID: UUID?
   ) throws -> String {
-    if draft.transport == .cloudSQL && draft.useIAM { return "" }
+    if draft.usesEphemeralCredentials { return "" }
     if !draft.password.isEmpty { return draft.password }
     guard let profileID else { return "" }
     return try passwordStore.password(for: profileID) ?? ""
@@ -416,7 +416,7 @@ final class WorkspaceModel: ObservableObject {
 
     do {
       let profile = connections[index]
-      let password = try passwordStore.password(for: profileID) ?? ""
+      let password = profile.usesPersonalIAM ? "" : try passwordStore.password(for: profileID) ?? ""
       let metadata = try await backend.connect(profile: profile, password: password)
       guard !areConnectionOperationsSuspended else {
         await backend.disconnect(profileID: profileID)

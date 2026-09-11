@@ -32,6 +32,25 @@ interface UsersResponse {
 }
 
 export class GoogleCloudService {
+  async loginToken(): Promise<{ token: string }> {
+    try {
+      const auth = new GoogleAuth({
+        scopes: ["https://www.googleapis.com/auth/sqlservice.login"],
+      });
+      const client = await auth.getClient();
+      const { token } = await client.getAccessToken();
+      if (!token) throw new Error("Missing access token");
+      return { token };
+    } catch {
+      // Auth errors can contain credentials: never forward the original error.
+      throw new RPCError(
+        -32010,
+        "Application Default Credentials are unavailable.",
+        "GOOGLE_AUTHENTICATION_UNAVAILABLE",
+      );
+    }
+  }
+
   async identity(raw: unknown): Promise<{ email: string | null }> {
     const { project } = z.object({ project: projectSchema }).parse(raw);
     try {

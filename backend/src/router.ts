@@ -16,6 +16,8 @@ export class Router {
         return formatSQL(request.params);
       case "system.ping":
         return { name: "solnari-backend", protocolVersion: 1 };
+      case "cloudSql.loginToken":
+        return this.googleCloud.loginToken();
       case "cloud.identity":
         return this.googleCloud.identity(request.params);
       case "cloudSql.instances":
