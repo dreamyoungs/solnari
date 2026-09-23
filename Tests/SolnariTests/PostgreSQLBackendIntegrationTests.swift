@@ -74,6 +74,31 @@ struct PostgreSQLBackendIntegrationTests {
       sql: QueryPlanBuilder.statement(sql: "SELECT 1 AS planned", engine: .postgresql)
     )
     #expect(!plan.table.rows.isEmpty)
+    let privileges = try await backend.execute(
+      profileID: profile.id, sql: PrivilegeVerification.sql)
+    #expect(privileges.table.columns == ["kind", "object", "grantee", "privilege", "grantable"])
+
+    let committed = try await backend.execute(
+      profileID: profile.id,
+      sql:
+        "BEGIN; CREATE TEMP TABLE solnari_tx_test(id int); INSERT INTO solnari_tx_test VALUES (1); SELECT * FROM solnari_tx_test; COMMIT;"
+    )
+    #expect(committed.report?.transactionState == "committed")
+    #expect(committed.table.rows == [[.integer(1)]])
+    let rollback = try await backend.execute(
+      profileID: profile.id,
+      sql: "BEGIN; SELECT 2; ROLLBACK;")
+    #expect(rollback.report?.transactionState == "rolledBack")
+    do {
+      _ = try await backend.execute(
+        profileID: profile.id,
+        sql: "BEGIN; SELECT 1; SELECT * FROM solnari_missing_table; COMMIT;")
+      Issue.record("중간 문장 오류가 필요합니다.")
+    } catch let error as QueryFailureDetails {
+      #expect(error.message.hasPrefix("Statement 3:"))
+      #expect(error.sqlState == "42P01")
+      #expect(error.transactionState == "rolledBack")
+    }
 
     await backend.disconnect(profileID: profile.id)
   }

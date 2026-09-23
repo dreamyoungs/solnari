@@ -465,6 +465,11 @@ struct ConnectionWorkspace: Hashable, Sendable {
   var selectedTabID: UUID?
   var queryTable: QueryTableData
   var querySourceObject: SchemaObject?
+  var executionReport: QueryExecutionReport?
+  var executionFailure: String?
+  var transactionState: String?
+  var privilegeBaseline: QueryTableData?
+  var privilegeVerificationMessage: String?
   var executionMessage: String
   var selectedResultTab: String
   var isRunning: Bool
@@ -880,6 +885,57 @@ struct ConnectionMetadata: Hashable, Codable, Sendable {
 struct QueryExecutionResult: Hashable, Sendable {
   let table: QueryTableData
   let durationMilliseconds: Int
+  var report: QueryExecutionReport? = nil
+}
+
+struct QueryExecutionReport: Hashable, Codable, Sendable {
+  struct Command: Hashable, Codable, Sendable {
+    let tag: String
+    let affectedRows: Int?
+    init(tag: String, affectedRows: Int?) {
+      self.tag = tag
+      self.affectedRows =
+        ["INSERT", "UPDATE", "DELETE", "MERGE", "COPY"].contains(tag) ? affectedRows : nil
+    }
+  }
+
+  let commands: [Command]
+  let transactionState: String
+
+  let resultNotice: String?
+  struct Notice: Hashable, Codable, Sendable {
+    let severity: String
+    let message: String
+  }
+  var notices: [Notice]? = nil
+  var statementCount: Int? = nil
+
+  var transactionMessage: String {
+    switch transactionState {
+    case "committed": "Transaction committed"
+    case "rolledBack": "Transaction rolled back"
+    case "inTransaction": "Transaction is open; changes are not committed"
+    case "failedTransaction": "Transaction is aborted; run ROLLBACK before continuing"
+    case "idle": "No open transaction"
+    default: "Transaction state not reported"
+    }
+  }
+}
+
+struct QueryFailureDetails: Decodable, Sendable, LocalizedError {
+  let message: String
+  var sqlState: String? = nil
+  let position: Int?
+  let transactionState: String
+  var statementIndex: Int? = nil
+
+  var errorDescription: String? {
+    let location = position.map { " · SQL position \($0)" } ?? ""
+    let transaction = QueryExecutionReport(
+      commands: [], transactionState: transactionState, resultNotice: nil)
+    return
+      "\(statementIndex.map { "Statement \($0): " } ?? "")\(message)\(location)\(sqlState.map { " · SQLSTATE \($0)" } ?? "")\n\(transaction.transactionMessage)"
+  }
 }
 
 enum SolnariDatabaseError: LocalizedError, Sendable {

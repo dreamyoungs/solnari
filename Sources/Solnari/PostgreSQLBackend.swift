@@ -359,12 +359,73 @@ actor PostgreSQLBackend {
 
     let clock = ContinuousClock()
     let start = clock.now
+    if QuerySafetyPolicy.startsTransaction(sql) {
+      let statements = try PostgreSQLTransactionScript.statements(sql)
+      return try await client.withConnection { connection in
+        var table = QueryTableData.empty
+        var commands: [QueryExecutionReport.Command] = []
+        for (index, statement) in statements.enumerated() {
+          do {
+            let result = try await connection.query(
+              PostgresQuery(unsafeSQL: statement), logger: connection.logger
+            ).get()
+            commands.append(.init(tag: result.metadata.command, affectedRows: result.metadata.rows))
+            if let row = result.rows.first {
+              table = QueryTableData(
+                columns: row.map(\.columnName), rows: result.rows.map { $0.map(self.decodeCell) })
+            } else if result.metadata.command == "SELECT" {
+              table = .empty
+            }
+          } catch {
+            let rolledBack =
+              (try? await connection.query(
+                PostgresQuery(unsafeSQL: "ROLLBACK"), logger: connection.logger
+              ).get()) != nil
+            let databaseError = error as? PSQLError
+            throw QueryFailureDetails(
+              message:
+                "Statement \(index + 1): \(databaseError?.serverInfo?[.message] ?? "Database execution failed")",
+              sqlState: databaseError?.serverInfo?[.sqlState], position: nil,
+              transactionState: rolledBack ? "rolledBack" : "notReported")
+          }
+        }
+        return QueryExecutionResult(
+          table: table,
+          durationMilliseconds: Self.milliseconds(from: start.duration(to: clock.now)),
+          report: QueryExecutionReport(
+            commands: commands,
+            transactionState: commands.last?.tag == "COMMIT" ? "committed" : "rolledBack",
+            resultNotice: nil))
+      }
+    }
+    let command = (try? PlanSQLScanner.tokens(sql: sql, engine: .postgresql).first) ?? ""
+    if ["CREATE", "ALTER", "DROP", "GRANT", "REVOKE", "COMMENT", "TRUNCATE"].contains(command) {
+      do {
+        return try await client.withConnection { connection in
+          let result = try await connection.query(
+            PostgresQuery(unsafeSQL: sql), logger: connection.logger
+          ).get()
+          return QueryExecutionResult(
+            table: .empty,
+            durationMilliseconds: Self.milliseconds(from: start.duration(to: clock.now)),
+            report: QueryExecutionReport(
+              commands: [.init(tag: result.metadata.command, affectedRows: result.metadata.rows)],
+              transactionState: "idle", resultNotice: nil))
+        }
+      } catch let error as PSQLError {
+        throw QueryFailureDetails(
+          message: error.serverInfo?[.message] ?? "Database execution failed",
+          sqlState: error.serverInfo?[.sqlState],
+          position: error.serverInfo?[.position].flatMap(Int.init),
+          transactionState: "notReported")
+      }
+    }
     let rows = try await client.query(PostgresQuery(unsafeSQL: sql))
     let columns = Array(rows.columns)
     var values: [[QueryCellValue]] = []
 
     for try await row in rows {
-      values.append(zip(row, columns).map(decodeCell))
+      values.append(row.map(decodeCell))
     }
 
     return QueryExecutionResult(
@@ -454,12 +515,11 @@ actor PostgreSQLBackend {
     }
   }
 
-  private func decodeCell(_ pair: (PostgresCell, PostgresColumn)) -> QueryCellValue {
-    let (cell, column) = pair
+  private func decodeCell(_ cell: PostgresCell) -> QueryCellValue {
     guard cell.bytes != nil else { return .null }
 
     do {
-      switch column.dataType {
+      switch cell.dataType {
       case .bool:
         return .boolean(try cell.decode(Bool.self))
       case .int2:

@@ -74,6 +74,11 @@ MCP 접근을 켜고 연결에서 쓰기를 허용하면 INSERT·UPDATE·DELETE�
 query에는 명시적인 작은 `LIMIT`과 필요한 column만 사용해야 합니다.
 `maxRows`와 `returnedRowCount`는 반환 결과 행에 관한 값이며, 변경되는 행의 수를 제한하거나
 보고하는 값은 아닙니다. 결과 행이 없어도 변경 SQL은 성공했을 수 있습니다.
+PostgreSQL 실행 결과의 `report`에는 드라이버가 보고한 명령과 영향받은 행 수,
+트랜잭션 상태가 포함됩니다. 서버 notice와 원본 DB 오류는 앱에만 표시하며 MCP에는
+전달하지 않습니다. 접근 거부 응답의 `error` 구조에는 오류 코드, 현재 access level,
+요청한 작업, 사용할 도구 및 앱에서 검토·실행하는 다음 단계가 들어갑니다.
+`solnari_status`와 현재 연결 응답의 `executionTool`로 선택할 실행 도구를 확인할 수 있습니다.
 쓰기 실행 결과가 2 MB를 넘으면 이미 완료된 변경을 실패로 표시하지 않고, 결과 데이터를
 생략한 `truncated: true` 성공 응답을 반환합니다.
 

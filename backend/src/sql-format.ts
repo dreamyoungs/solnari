@@ -104,6 +104,26 @@ function tokens(sql: string, engine: Engine): Token[] {
   return result;
 }
 
+export function postgresStatementAtPosition(
+  sql: string,
+  position: number,
+): number | null {
+  // PostgreSQL 위치는 문자 단위이며 JS 토큰 위치는 UTF-16 단위다.
+  const offset = Array.from(sql)
+    .slice(0, position - 1)
+    .join("").length;
+  try {
+    return (
+      1 +
+      tokens(sql, "PostgreSQL").filter(
+        (token) => token.value === ";" && token.start < offset,
+      ).length
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function formatSQL(raw: unknown): { sql: string; offsets: number[] } {
   const input = schema.parse(raw);
   try {

@@ -110,6 +110,7 @@ actor NodeBackendClient {
     struct Failure: Decodable {
       struct Details: Decodable {
         let diagnosticCode: String?
+        let queryDetails: QueryFailureDetails?
       }
 
       let message: String
@@ -122,6 +123,7 @@ actor NodeBackendClient {
   private var process: Process?
   private var inputHandle: FileHandle?
   private var readerTask: Task<Void, Never>?
+  private var generation = UUID()
   private var nextRequestID = 1
   private var pending: [Int: CheckedContinuation<Data, any Error>] = [:]
 
@@ -158,6 +160,7 @@ actor NodeBackendClient {
     if let failure = try? JSONDecoder().decode(FailureResponse.self, from: responseData),
       let backendError = failure.error
     {
+      if let details = backendError.data?.queryDetails { throw details }
       throw NodeBackendError.backend(
         code: backendError.data?.diagnosticCode ?? "NODE_BACKEND_ERROR",
         message: backendError.message
@@ -172,6 +175,7 @@ actor NodeBackendClient {
   }
 
   func stop() {
+    generation = UUID()
     readerTask?.cancel()
     readerTask = nil
     inputHandle?.closeFile()
@@ -185,6 +189,8 @@ actor NodeBackendClient {
 
   private func startIfNeeded() throws {
     if process?.isRunning == true { return }
+    if process != nil { stop() }
+    generation = UUID()
     let executable = try Self.nodeExecutableURL()
     let backend = try Self.backendBundleURL()
     let subprocessGuard = try Self.subprocessGuardURL()
@@ -199,24 +205,53 @@ actor NodeBackendClient {
     process.currentDirectoryURL = try Self.runtimeDirectoryURL()
     process.environment = Self.sanitizedEnvironment()
     try process.run()
+    standardInput.fileHandleForReading.closeFile()
+    standardOutput.fileHandleForWriting.closeFile()
 
     self.process = process
     inputHandle = standardInput.fileHandleForWriting
     let outputHandle = standardOutput.fileHandleForReading
+    let epoch = generation
+    // 유휴 파이프가 Foundation의 공용 AsyncBytes I/O 실행기를 막지 않게 한다.
+    let (chunks, continuation) = AsyncThrowingStream<Data, any Error>.makeStream(
+      bufferingPolicy: .bufferingOldest(128))
+    continuation.onTermination = { _ in outputHandle.readabilityHandler = nil }
+    outputHandle.readabilityHandler = { handle in
+      let chunk = handle.availableData
+      if chunk.isEmpty {
+        continuation.finish()
+        return
+      }
+      if case .dropped = continuation.yield(chunk) {
+        continuation.finish(throwing: NodeBackendError.invalidResponse)
+      }
+    }
     readerTask = Task.detached { [weak self] in
+      defer {
+        outputHandle.readabilityHandler = nil
+        try? outputHandle.close()
+      }
       do {
-        for try await line in outputHandle.bytes.lines {
-          guard line.utf8.count <= 8_388_608 else { continue }
-          await self?.receive(Data(line.utf8))
+        var buffer = Data()
+        for try await chunk in chunks {
+          buffer.append(chunk)
+          while let newline = buffer.firstIndex(of: 10) {
+            let line = Data(buffer[..<newline])
+            guard line.count <= 8_388_608 else { throw NodeBackendError.invalidResponse }
+            buffer.removeSubrange(...newline)
+            await self?.receive(line, generation: epoch)
+          }
+          guard buffer.count <= 8_388_608 else { throw NodeBackendError.invalidResponse }
         }
       } catch {
         // EOF and read failures are handled as a terminated backend.
       }
-      await self?.backendDidTerminate()
+      await self?.backendDidTerminate(generation: epoch)
     }
   }
 
-  private func receive(_ data: Data) {
+  private func receive(_ data: Data, generation epoch: UUID) {
+    guard generation == epoch else { return }
     guard let identifier = try? JSONDecoder().decode(ResponseIdentifier.self, from: data),
       let requestID = identifier.id,
       let continuation = pending.removeValue(forKey: requestID)
@@ -224,11 +259,9 @@ actor NodeBackendClient {
     continuation.resume(returning: data)
   }
 
-  private func backendDidTerminate() {
-    process = nil
-    inputHandle = nil
-    readerTask = nil
-    failPendingRequests()
+  private func backendDidTerminate(generation epoch: UUID) {
+    guard generation == epoch else { return }
+    stop()
   }
 
   private func failPendingRequests() {

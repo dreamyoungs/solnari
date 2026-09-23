@@ -8,6 +8,7 @@ import mysql from "mysql2/promise";
 import pg from "pg";
 import { z } from "zod";
 import { RPCError } from "./protocol.js";
+import { postgresStatementAtPosition } from "./sql-format.js";
 
 const connectionSchema = z.object({
   profileID: z.string().uuid(),
@@ -220,25 +221,105 @@ export class DatabaseSessions {
     const session = this.sessions.get(profileID);
     if (session === undefined) throw notConnected();
     const startedAt = performance.now();
+    const notices: Array<{ severity: string; message: string }> = [];
+    const onNotice = (notice: {
+      severity?: string | undefined;
+      message?: string | undefined;
+    }) => {
+      if (notices.length < 20)
+        notices.push({
+          severity: notice.severity ?? "NOTICE",
+          message: (notice.message ?? "").slice(0, 4096),
+        });
+    };
+    if (session.engine === "PostgreSQL") session.client.on("notice", onNotice);
     try {
       if (session.engine === "PostgreSQL") {
-        const result = await session.client.query<unknown[]>({
+        const rawResult = await session.client.query<unknown[]>({
           text: sql,
           rowMode: "array",
         });
-        assertResultDimensions(result.rows.length, result.fields.length);
-        return {
-          columns: result.fields.map((field) => field.name),
-          rows: result.rows.map((row) =>
-            row.map((value, index) =>
-              encodePostgresCell(value, result.fields[index]?.dataTypeID),
-            ),
-          ),
-          durationMilliseconds: Math.max(
-            0,
-            Math.round(performance.now() - startedAt),
-          ),
+        // pg는 simple-query의 각 문장 결과를 배열로 반환한다. COMMIT이
+        // 마지막이어도 직전 SELECT 결과를 보존하고 서로 다른 열을 합치지 않는다.
+        const results: pg.QueryResult<unknown[]>[] = Array.isArray(rawResult)
+          ? rawResult
+          : [rawResult];
+        const result =
+          results.findLast((item) => item.fields.length > 0) ?? results.at(-1);
+        const commands = results.slice(0, 1000).map((item) => ({
+          tag: item.command ?? "EMPTY",
+          affectedRows: [
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "MERGE",
+            "COPY",
+          ].includes(item.command)
+            ? item.rowCount
+            : null,
+        }));
+        const finalTag = results.at(-1)?.command;
+        const transactionStatus = session.client.getTransactionStatus();
+        const report = {
+          commands,
+          statementCount: results.length,
+          notices,
+          transactionState:
+            transactionStatus === "T"
+              ? "inTransaction"
+              : transactionStatus === "E"
+                ? "failedTransaction"
+                : transactionStatus === "I"
+                  ? finalTag === "COMMIT"
+                    ? "committed"
+                    : finalTag === "ROLLBACK"
+                      ? "rolledBack"
+                      : "idle"
+                  : "notReported",
+          resultNotice:
+            results.length > 1000
+              ? "Command list truncated."
+              : (null as string | null),
         };
+        try {
+          assertResultDimensions(
+            result?.rows.length ?? 0,
+            result?.fields.length ?? 0,
+          );
+          const response = {
+            report,
+            columns: result?.fields.map((field) => field.name) ?? [],
+            rows:
+              result?.rows.map((row) =>
+                row.map((value, index) =>
+                  encodePostgresCell(value, result.fields[index]?.dataTypeID),
+                ),
+              ) ?? [],
+            durationMilliseconds: Math.max(
+              0,
+              Math.round(performance.now() - startedAt),
+            ),
+          };
+          if (Buffer.byteLength(JSON.stringify(response), "utf8") > 7_500_000) {
+            throw new Error("Result display limit");
+          }
+          return response;
+        } catch {
+          // 서버 응답 이후 표시 제한/인코딩 실패를 DB 실행 실패로 바꾸지 않는다.
+          return {
+            columns: [],
+            rows: [],
+            durationMilliseconds: Math.max(
+              0,
+              Math.round(performance.now() - startedAt),
+            ),
+            report: {
+              ...report,
+              resultNotice:
+                "The database completed execution, but the result could not be displayed. Do not rerun changes without checking the database state.",
+            },
+          };
+        }
       }
       const [rawRows, fields] = await session.client.query({
         sql,
@@ -262,7 +343,49 @@ export class DatabaseSessions {
     } catch (error) {
       if (error instanceof RPCError) throw error;
       const diagnostic = databaseDiagnostic("QUERY", error);
-      throw new RPCError(-32041, queryFailureMessage(diagnostic), diagnostic);
+      let queryDetails;
+      if (
+        session.engine === "PostgreSQL" &&
+        error instanceof pg.DatabaseError
+      ) {
+        // 오류 콜백은 ReadyForQuery보다 먼저 도착한다. 빈 쿼리로 프로토콜
+        // 경계까지 기다리며 변경 SQL은 재실행하지 않는다.
+        let transactionState = "notReported";
+        try {
+          await session.client.query("");
+          const status = session.client.getTransactionStatus();
+          transactionState =
+            status === "E"
+              ? "failedTransaction"
+              : status === "T"
+                ? "inTransaction"
+                : status === "I"
+                  ? "idle"
+                  : "notReported";
+        } catch {
+          /* 연결이 끊어지면 커밋/롤백 여부를 추정하지 않는다. */
+        }
+        queryDetails = {
+          message: error.message.slice(0, 4096),
+          sqlState: error.code ?? null,
+          position: /^\d+$/.test(error.position ?? "")
+            ? Number(error.position)
+            : null,
+          statementIndex: error.position
+            ? postgresStatementAtPosition(sql, Number(error.position))
+            : null,
+          transactionState,
+        };
+      }
+      throw new RPCError(
+        -32041,
+        queryFailureMessage(diagnostic),
+        diagnostic,
+        queryDetails,
+      );
+    } finally {
+      if (session.engine === "PostgreSQL")
+        session.client.removeListener("notice", onNotice);
     }
   }
 

@@ -4,11 +4,29 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
+const errorDetailsSchema = z.object({
+  code: z.string(),
+  accessLevel: z.string(),
+  requestedOperation: z.string(),
+  nextStep: z.string(),
+  verification: z.string(),
+});
+
+export class SolnariBridgeError extends Error {
+  constructor(
+    message: string,
+    readonly details?: z.infer<typeof errorDetailsSchema>,
+  ) {
+    super(message);
+  }
+}
+
 const bridgeResponseSchema = z.object({
   id: z.string(),
   ok: z.boolean(),
   resultJSON: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
+  errorDetails: errorDetailsSchema.nullable().optional(),
 });
 
 export interface SolnariBridge {
@@ -40,11 +58,14 @@ export class SolnariAppBridge implements SolnariBridge {
       let received = Buffer.alloc(0);
       let settled = false;
 
-      const fail = (message: string): void => {
+      const fail = (
+        message: string,
+        details?: z.infer<typeof errorDetailsSchema>,
+      ): void => {
         if (settled) return;
         settled = true;
         socket.destroy();
-        reject(new Error(message));
+        reject(new SolnariBridgeError(message, details));
       };
 
       socket.setTimeout(45_000, () => {
@@ -73,7 +94,10 @@ export class SolnariAppBridge implements SolnariBridge {
             return;
           }
           if (!response.ok || response.resultJSON == null) {
-            fail(response.error ?? "Solnari rejected the MCP request.");
+            fail(
+              response.error ?? "Solnari rejected the MCP request.",
+              response.errorDetails ?? undefined,
+            );
             return;
           }
           const result: unknown = JSON.parse(response.resultJSON);

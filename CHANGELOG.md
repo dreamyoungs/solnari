@@ -5,6 +5,31 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.5.2 Apple Silicon preview] - 2026-09-23
+
+### Fixed
+
+- Preserve successful PostgreSQL multi-statement execution, distinguish commit/rollback and
+  database errors from result display failures, and run complete native transaction scripts
+  on one physical connection (#27).
+- Prevent idle Node readers and stale process termination callbacks from blocking other clients.
+- Support the verified Codex CLI 0.155.0-alpha.16 handshake while retaining ephemeral and
+  restricted-session checks (#11).
+
+### Improved
+
+- Show PostgreSQL command results, transaction state and server-reported diagnostics; compare
+  visible membership and non-system table privileges after GRANT/REVOKE (#26).
+- Explain MCP access mismatches with structured guidance while preserving existing write access.
+
+### Verification and limitations
+
+- Existing schema tabs, SQL formatting and safe execution plans were checked (#10, #12, #13).
+- Local PostgreSQL/SQLite and both UI languages/themes were tested. Live Cloud SQL, MySQL and
+  authenticated Codex model responses were not tested. See docs/query-results.md for supported
+  transaction and privilege-verification boundaries. This preview remains ad-hoc signed and
+  not notarized.
+
 ## [0.5.1 Apple Silicon preview] - 2026-09-11
 
 ### Improved

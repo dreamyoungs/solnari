@@ -7,6 +7,55 @@ import Testing
 @MainActor
 struct FeaturePreviewTests {
   @Test(
+    "PostgreSQL 명령 결과를 한국어·영어와 두 테마로 렌더링한다",
+    .enabled(
+      if: ProcessInfo.processInfo.environment["SOLNARI_RENDER_UI"] != nil
+        && ProcessInfo.processInfo.environment["SOLNARI_TEST_POSTGRES_HOST"] == "127.0.0.1"))
+  func renderCommandResults() async throws {
+    let suiteName = "CommandUI.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let profile = ConnectionProfile(
+      name: "Local test", database: "postgres", engine: .postgresql,
+      transport: .direct, host: "127.0.0.1",
+      port: Int(ProcessInfo.processInfo.environment["SOLNARI_TEST_POSTGRES_PORT"] ?? "5432")!,
+      username: ProcessInfo.processInfo.environment["SOLNARI_TEST_POSTGRES_USER"] ?? "postgres",
+      requiresTLS: false, clientEncoding: "UTF8")
+    let store = ConnectionProfileStore(defaults: defaults)
+    try store.save([profile])
+    let model = WorkspaceModel(profileStore: store)
+    await model.connect(profileID: profile.id)
+    model.useSQL(
+      "BEGIN; CREATE TEMP TABLE command_preview(id int); INSERT INTO command_preview VALUES (1); COMMIT;"
+    )
+    await model.runCurrentQuery()
+    #expect(model.executionReport?.transactionState == "committed")
+    let settings = AppSettings()
+    let original = settings.language
+    defer { settings.language = original }
+    let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+      .appendingPathComponent(".build/feature-previews")
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    for language in [AppLanguage.korean, .english] {
+      settings.language = language
+      for dark in [false, true] {
+        try await render(
+          WorkspaceView().environmentObject(model).environmentObject(settings),
+          size: NSSize(width: 1000, height: 800), dark: dark,
+          to: output.appendingPathComponent(
+            "commands-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+      }
+    }
+    model.useSQL("GRANT SELECT ON command_preview TO PUBLIC;")
+    await model.runCurrentQuery()
+    #expect(model.executionReport?.commands.first?.tag == "GRANT")
+    #expect(model.canVerifyPrivileges)
+    await model.verifyPrivileges()
+    #expect(model.queryTable.rows.contains { $0.first == .text("+") })
+    await model.suspendConnections()
+  }
+
+  @Test(
     "한국어·영어 및 밝은·어두운 테마의 실제 SwiftUI 화면을 렌더링한다",
     .enabled(if: ProcessInfo.processInfo.environment["SOLNARI_RENDER_UI"] != nil))
   func renderFeatureScreens() async throws {

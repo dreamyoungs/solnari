@@ -59,7 +59,7 @@ enum CodexAssistantError: Error, LocalizedError, Equatable {
     switch self {
     case .unavailable: "Codex CLI was not found. Install Codex CLI or the Codex desktop app."
     case .unsupportedVersion:
-      "This Codex CLI version has not been verified. This integration requires Codex CLI 0.153.x."
+      "This Codex CLI version has not been verified. Supported versions: 0.153.x and 0.155.0-alpha.16."
     case .terminated: "Codex stopped. Reconnect to start a new temporary conversation."
     case .invalidResponse: "Codex returned an invalid response. Start a new conversation."
     case .privacy:
@@ -115,7 +115,8 @@ enum CodexSessionPolicy {
   }
   static func supports(version: String) -> Bool {
     version.range(
-      of: #"(?:codex-cli |solnari_sql_assistant/)?0\.153\.\d+(?:\s|$)"#, options: .regularExpression
+      of: #"^(?:codex-cli |solnari_sql_assistant/)?(?:0\.153\.\d+|0\.155\.0-alpha\.16)(?:\s|$)"#,
+      options: .regularExpression
     ) != nil
   }
 

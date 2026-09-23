@@ -80,6 +80,54 @@ final class WorkspaceModel: ObservableObject {
     workspace(for: selectedConnectionID).queryTable
   }
 
+  var executionReport: QueryExecutionReport? {
+    workspace(for: selectedConnectionID).executionReport
+  }
+
+  var executionFailure: String? { workspace(for: selectedConnectionID).executionFailure }
+
+  var transactionMessage: String {
+    QueryExecutionReport(
+      commands: [],
+      transactionState: workspace(for: selectedConnectionID).transactionState ?? "notReported",
+      resultNotice: nil
+    ).transactionMessage
+  }
+
+  var canVerifyPrivileges: Bool {
+    workspace(for: selectedConnectionID).privilegeBaseline != nil && !isRunning
+      && selectedConnection?.status == .connected
+  }
+
+  var privilegeVerificationMessage: String? {
+    workspace(for: selectedConnectionID).privilegeVerificationMessage
+  }
+
+  func verifyPrivileges() async {
+    guard canVerifyPrivileges, let profileID = selectedConnectionID,
+      let baseline = workspace(for: profileID).privilegeBaseline
+    else { return }
+    updateWorkspace(for: profileID) { $0.isRunning = true }
+    defer { updateWorkspace(for: profileID) { $0.isRunning = false } }
+    do {
+      let result = try await backend.execute(profileID: profileID, sql: PrivilegeVerification.sql)
+      guard let changes = PrivilegeVerification.changes(before: baseline, after: result.table),
+        result.report?.resultNotice == nil
+      else { throw SolnariDatabaseError.invalidServerResponse }
+      updateWorkspace(for: profileID) {
+        $0.queryTable = changes
+        $0.querySourceObject = nil
+        $0.selectedResultTab = "Results"
+        $0.privilegeVerificationMessage =
+          "Compared visible memberships and table privileges. Other privileges and the intended effect are not verified."
+      }
+    } catch {
+      updateWorkspace(for: profileID) {
+        $0.privilegeVerificationMessage = "Command executed; privilege verification is unavailable."
+      }
+    }
+  }
+
   var querySourceObject: SchemaObject? {
     workspace(for: selectedConnectionID).querySourceObject
   }
@@ -413,6 +461,13 @@ final class WorkspaceModel: ObservableObject {
     connectingProfileIDs.insert(profileID)
     ensureWorkspace(for: profileID)
     connections[index].status = .connecting
+    updateWorkspace(for: profileID) {
+      $0.privilegeBaseline = nil
+      $0.privilegeVerificationMessage = nil
+      $0.executionReport = nil
+      $0.executionFailure = nil
+      $0.transactionState = nil
+    }
 
     do {
       let profile = connections[index]
@@ -508,11 +563,30 @@ final class WorkspaceModel: ObservableObject {
     updateWorkspace(for: profileID) {
       $0.isRunning = true
       $0.executionMessage = "Running query…"
+      $0.executionFailure = nil
+      $0.executionReport = nil
+      $0.privilegeBaseline = nil
+      $0.privilegeVerificationMessage = nil
+    }
+    if engine == .postgresql && QuerySafetyPolicy.containsPrivilegeChange(sql) {
+      if let before = try? await backend.execute(
+        profileID: profileID, sql: PrivilegeVerification.sql),
+        before.table.rows.count <= 1000, before.report?.resultNotice == nil
+      {
+        updateWorkspace(for: profileID) { $0.privilegeBaseline = before.table }
+      } else {
+        updateWorkspace(for: profileID) {
+          $0.privilegeVerificationMessage =
+            "Privilege baseline is unavailable; changes cannot be compared."
+        }
+      }
     }
     do {
       let result = try await backend.execute(profileID: profileID, sql: sql)
       updateWorkspace(for: profileID) {
         $0.queryTable = result.table
+        $0.executionReport = result.report
+        $0.transactionState = result.report?.transactionState
         $0.querySourceObject = querySourceObject
         $0.executionMessage =
           result.table.rows.isEmpty
@@ -531,12 +605,16 @@ final class WorkspaceModel: ObservableObject {
           $0.queryTable = .empty
           $0.querySourceObject = nil
           $0.executionMessage = "No results"
+          $0.privilegeBaseline = nil
         }
       } else {
         updateWorkspace(for: profileID) {
           $0.queryTable = .empty
           $0.querySourceObject = nil
           $0.executionMessage = "Query failed"
+          $0.executionFailure = error.localizedDescription
+          $0.transactionState = (error as? QueryFailureDetails)?.transactionState
+          $0.privilegeBaseline = nil
         }
         presentedError = error.localizedDescription
       }
@@ -558,6 +636,10 @@ final class WorkspaceModel: ObservableObject {
         $0.schema = .empty
         $0.isRunning = false
         $0.executionMessage = "No results"
+        $0.transactionState = nil
+        $0.executionReport = nil
+        $0.executionFailure = nil
+        $0.privilegeBaseline = nil
       }
     }
     for index in connections.indices {
@@ -588,6 +670,10 @@ final class WorkspaceModel: ObservableObject {
       $0.queryTable = .empty
       $0.querySourceObject = nil
       $0.executionMessage = "No results"
+      $0.executionReport = nil
+      $0.executionFailure = nil
+      $0.privilegeBaseline = nil
+      $0.privilegeVerificationMessage = nil
     }
   }
 
@@ -719,8 +805,17 @@ final class WorkspaceModel: ObservableObject {
     }
     updateWorkspace(for: profile.id) { $0.isRunning = true }
     defer { updateWorkspace(for: profile.id) { $0.isRunning = false } }
-    let result = try await backend.execute(
-      profileID: profile.id, sql: sql, requiredAccessLevel: accessLevel)
+    let result: QueryExecutionResult
+    do {
+      result = try await backend.execute(
+        profileID: profile.id, sql: sql, requiredAccessLevel: accessLevel)
+      updateWorkspace(for: profile.id) { $0.transactionState = result.report?.transactionState }
+    } catch {
+      updateWorkspace(for: profile.id) {
+        $0.transactionState = (error as? QueryFailureDetails)?.transactionState
+      }
+      throw error
+    }
     if accessLevel == .readWrite,
       let snapshot = try? await backend.loadSchema(profileID: profile.id),
       !areConnectionOperationsSuspended,
@@ -734,7 +829,12 @@ final class WorkspaceModel: ObservableObject {
       rows: rows.map { $0.map(MCPQueryCell.init) },
       returnedRowCount: rows.count,
       truncated: result.table.rows.count > rows.count,
-      durationMilliseconds: result.durationMilliseconds
+      durationMilliseconds: result.durationMilliseconds,
+      report: result.report.map {
+        QueryExecutionReport(
+          commands: $0.commands, transactionState: $0.transactionState,
+          resultNotice: $0.resultNotice, statementCount: $0.statementCount)
+      }
     )
   }
 

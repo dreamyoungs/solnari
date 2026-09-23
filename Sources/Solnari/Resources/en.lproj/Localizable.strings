@@ -153,3 +153,22 @@
 "MCP queries follow the selected connection's access level." = "MCP queries follow the selected connection's access level.";
 
 "Read / Write connections also allow MCP changes without an extra Solnari confirmation." = "Read / Write connections also allow MCP changes without an extra Solnari confirmation.";
+"Command execution completed" = "Command execution completed";
+"Transaction committed" = "Transaction committed";
+"Transaction rolled back" = "Transaction rolled back";
+"Transaction state not reported" = "Transaction state not reported";
+"Execution succeeded; resulting database state has not been verified." = "Execution succeeded; resulting database state has not been verified.";
+"The database completed execution, but the result could not be displayed. Do not rerun changes without checking the database state." = "The database completed execution, but the result could not be displayed. Do not rerun changes without checking the database state.";
+"Transaction is open; changes are not committed" = "Transaction is open; changes are not committed";
+"Transaction is aborted; run ROLLBACK before continuing" = "Transaction is aborted; run ROLLBACK before continuing";
+"No open transaction" = "No open transaction";
+"Verify privileges" = "Verify privileges";
+"Compared visible memberships and table privileges. Other privileges and the intended effect are not verified." = "Compared visible memberships and table privileges. Other privileges and the intended effect are not verified.";
+"Command executed; privilege verification is unavailable." = "Command executed; privilege verification is unavailable.";
+"Privilege baseline is unavailable; changes cannot be compared." = "Privilege baseline is unavailable; changes cannot be compared.";
+"Statements completed" = "Statements completed";
+"Affected rows" = "Affected rows";
+"Only the last tabular result is displayed." = "Only the last tabular result is displayed.";
+"Native PostgreSQL transactions must be run as one complete BEGIN … COMMIT or ROLLBACK script, without intermediate commits or AND CHAIN." = "Native PostgreSQL transactions must be run as one complete BEGIN … COMMIT or ROLLBACK script, without intermediate commits or AND CHAIN.";
+"Command list truncated." = "Command list truncated.";
+"This Codex CLI version has not been verified. Supported versions: 0.153.x and 0.155.0-alpha.16." = "This Codex CLI version has not been verified. Supported versions: 0.153.x and 0.155.0-alpha.16.";

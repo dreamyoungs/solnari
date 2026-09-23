@@ -33,6 +33,9 @@ struct CodexAssistantTests {
     }
     #expect(CodexSessionPolicy.supports(version: "solnari_sql_assistant/0.153.4 (test)"))
     #expect(!CodexSessionPolicy.supports(version: "codex-cli 0.154.0"))
+    #expect(CodexSessionPolicy.supports(version: "codex-cli 0.155.0-alpha.16"))
+    #expect(!CodexSessionPolicy.supports(version: "codex-cli 0.155.0-alpha.17"))
+    #expect(!CodexSessionPolicy.supports(version: "codex-cli 10.153.1"))
   }
 
   @Test("비밀·연결 주소·민감한 결과 컬럼을 차단하고 결과 행은 기본 제외한다")

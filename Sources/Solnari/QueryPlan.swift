@@ -37,11 +37,31 @@ enum QueryPlanBuilder {
 }
 
 // 계획 조회에서만 사용하는 보수적인 스캐너입니다. 서버별 escape 설정이 불명확하면 거부합니다.
-private enum PlanSQLScanner {
+enum PlanSQLScanner {
   static func tokens(sql: String, engine: DatabaseEngine) throws -> [String] {
+    try scan(sql: sql, engine: engine).tokens
+  }
+
+  static func statements(sql: String, engine: DatabaseEngine) throws -> [String] {
+    let chars = Array(sql)
+    let boundaries = try scan(sql: sql, engine: engine).ends + [chars.count]
+    var start = 0
+    var statements: [String] = []
+    for end in boundaries {
+      let text = String(chars[start..<end])
+      if !(try tokens(sql: text, engine: engine)).isEmpty { statements.append(text) }
+      start = min(end + 1, chars.count)
+    }
+    return statements
+  }
+
+  private static func scan(sql: String, engine: DatabaseEngine) throws -> (
+    tokens: [String], ends: [Int]
+  ) {
     let chars = Array(sql)
     var i = 0
     var result: [String] = []
+    var ends: [Int] = []
     func peek(_ n: Int = 1) -> Character? { i + n < chars.count ? chars[i + n] : nil }
     while i < chars.count {
       let c = chars[i]
@@ -127,10 +147,11 @@ private enum PlanSQLScanner {
         result.append(String(chars[start..<i]).uppercased())
       } else {
         result.append(String(c))
+        if c == ";" { ends.append(i) }
         i += 1
       }
     }
-    return result
+    return (result, ends)
   }
 }
 

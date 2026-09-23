@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatSQL } from "../src/sql-format.js";
+import { formatSQL, postgresStatementAtPosition } from "../src/sql-format.js";
+
+it("maps PostgreSQL character positions across Unicode and quoted semicolons", () => {
+  const sql = "BEGIN; SELECT '🍀;'; SELECT missing; COMMIT;";
+  const position = Array.from(sql.slice(0, sql.indexOf("missing"))).length + 1;
+  expect(postgresStatementAtPosition(sql, position)).toBe(3);
+});
 
 describe("local SQL formatting", () => {
   const corpus = [

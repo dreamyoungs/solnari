@@ -51,6 +51,7 @@ struct MCPConnectionSnapshot: Codable, Sendable {
   let serverVersion: String?
   let serverEncoding: String?
   let serverTimeZone: String?
+  var executionTool: String? = nil
 }
 
 struct MCPQueryCell: Codable, Sendable {
@@ -112,6 +113,7 @@ struct MCPQuerySnapshot: Codable, Sendable {
   let returnedRowCount: Int
   let truncated: Bool
   let durationMilliseconds: Int
+  var report: QueryExecutionReport? = nil
 }
 
 @MainActor
@@ -228,7 +230,15 @@ final class MCPAccessController: ObservableObject {
       let result: String
       switch request.method {
       case "status":
-        result = try encode(["status": "ready"])
+        result = try encode([
+          "status": "ready",
+          "accessLevel": workspace.selectedConnection?.effectiveAccessLevel.rawValue
+            ?? "No connection",
+          "executionTool": Self.executionTool(
+            for: workspace.selectedConnection?.effectiveAccessLevel) ?? "unavailable",
+          "writePolicy":
+            "Read / Write connections execute changes immediately. Read-only connections reject changes.",
+        ])
       case "activeConnection":
         result = try encode(connectionSnapshot(from: try workspace.mcpSelectedProfile()))
       case "schema":
@@ -267,9 +277,13 @@ final class MCPAccessController: ObservableObject {
       }
       return .success(id: request.id, resultJSON: result)
     } catch let error as MCPAccessError {
-      return .failure(id: request.id, message: error.localizedDescription)
+      return .failure(
+        id: request.id, message: error.localizedDescription,
+        details: failureDetails(code: Self.errorCode(error), operation: request.method))
     } catch let error as SolnariDatabaseError {
-      return .failure(id: request.id, message: error.localizedDescription)
+      return .failure(
+        id: request.id, message: error.localizedDescription,
+        details: failureDetails(code: "DATABASE_REQUEST_REJECTED", operation: request.method))
     } catch {
       return .failure(id: request.id, message: "Solnari could not complete the MCP request.")
     }
@@ -286,7 +300,40 @@ final class MCPAccessController: ObservableObject {
       status: profile.status.rawValue,
       serverVersion: profile.serverVersion,
       serverEncoding: profile.serverEncoding,
-      serverTimeZone: profile.serverTimeZone
+      serverTimeZone: profile.serverTimeZone,
+      executionTool: Self.executionTool(for: profile.effectiveAccessLevel)
+    )
+  }
+
+  static func executionTool(for access: DatabaseAccessLevel?) -> String? {
+    switch access {
+    case .readOnly: "solnari_execute_read_query"
+    case .readWrite: "solnari_execute_query"
+    default: nil
+    }
+  }
+
+  private static func errorCode(_ error: MCPAccessError) -> String {
+    switch error {
+    case .readOnlyConnectionRequired, .readWriteConnectionRequired: "MCP_ACCESS_LEVEL_MISMATCH"
+    case .selectedConnectionChanged: "MCP_CONNECTION_CHANGED"
+    case .queryAlreadyRunning: "MCP_QUERY_IN_PROGRESS"
+    case .noSelectedConnection, .connectionNotReady: "MCP_CONNECTION_NOT_READY"
+    case .schemaObjectNotFound: "MCP_OBJECT_NOT_FOUND"
+    case .responseTooLarge: "MCP_RESPONSE_TOO_LARGE"
+    }
+  }
+
+  private func failureDetails(code: String, operation: String) -> MCPFailureDetails {
+    let access = workspace.selectedConnection?.effectiveAccessLevel
+    let tool = Self.executionTool(for: access) ?? "No execution tool is available"
+    return MCPFailureDetails(
+      code: code, accessLevel: access?.rawValue ?? "No connection",
+      requestedOperation: operation,
+      nextStep:
+        "Refresh solnari_get_active_connection. \(tool). To review SQL manually, open a query tab in Solnari, check the selected connection and run it there. Access changes require reconnecting.",
+      verification:
+        "Use SELECT catalog queries through the permitted execution tool to check membership or privileges. Command success alone does not verify the resulting state."
     )
   }
 
@@ -297,7 +344,7 @@ final class MCPAccessController: ObservableObject {
     // 이미 완료된 쓰기를 응답 크기 오류로 보고하면 클라이언트가 재실행할 수 있습니다.
     let summary = MCPQuerySnapshot(
       columns: [], rows: [], returnedRowCount: 0, truncated: true,
-      durationMilliseconds: snapshot.durationMilliseconds)
+      durationMilliseconds: snapshot.durationMilliseconds, report: snapshot.report)
     return String(decoding: try encoder.encode(summary), as: UTF8.self)
   }
 

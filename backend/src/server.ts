@@ -59,6 +59,7 @@ const handleLine = async (line: string): Promise<void> => {
           error.code,
           error.message,
           error.diagnosticCode,
+          error.queryDetails,
         ),
       );
       return;
@@ -83,10 +84,15 @@ const failure = (
   code: number,
   message: string,
   diagnosticCode: string,
+  queryDetails?: import("./protocol.js").QueryFailureDetails,
 ): RPCFailure => ({
   jsonrpc: "2.0",
   id,
-  error: { code, message, data: { diagnosticCode } },
+  error: {
+    code,
+    message,
+    data: { diagnosticCode, ...(queryDetails ? { queryDetails } : {}) },
+  },
 });
 
 let isShuttingDown = false;

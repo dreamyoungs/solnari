@@ -1,6 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { SolnariAppBridge, type SolnariBridge } from "./mcp-app-bridge.js";
+import {
+  SolnariAppBridge,
+  SolnariBridgeError,
+  type SolnariBridge,
+} from "./mcp-app-bridge.js";
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -24,6 +28,9 @@ const result = async (operation: Promise<unknown>) => {
     return {
       content: [{ type: "text" as const, text: message }],
       isError: true,
+      ...(error instanceof SolnariBridgeError && error.details
+        ? { structuredContent: { error: error.details } }
+        : {}),
     };
   }
 };

@@ -351,22 +351,12 @@ private struct SQLEditorPane: View {
 
       Spacer()
 
-      Menu {
-        Button(settings.text("Read/write session")) {}
-        Button(settings.text("Read-only session")) {}
-        Divider()
-        Button(settings.text("Auto commit")) {}
-      } label: {
-        HStack(spacing: 5) {
-          StatusDot(color: SolnariTheme.mint, size: 5)
-          Text(settings.text("Auto commit"))
-          Image(systemName: "chevron.down")
-            .font(.system(size: 8))
-        }
+      Text(settings.text(model.transactionMessage))
         .font(.caption)
-      }
-      .menuStyle(.borderlessButton)
-      .frame(width: 104)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .help(settings.text(model.transactionMessage))
+        .frame(maxWidth: 300, alignment: .trailing)
     }
     .padding(.horizontal, 12)
     .frame(height: 40)
@@ -437,12 +427,30 @@ private struct ResultsPane: View {
   var body: some View {
     VStack(spacing: 0) {
       resultToolbar
+      if let message = model.privilegeVerificationMessage {
+        Text(settings.text(message)).font(.caption)
+          .foregroundStyle(.secondary).padding(8)
+      }
       if model.selectedResultTab == "Results" {
-        resultGrid
+        if let failure = model.executionFailure {
+          Text(failure).textSelection(.enabled).padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if model.queryTable.columns.isEmpty, let report = model.executionReport {
+          commandResults(report)
+        } else {
+          resultGrid
+        }
       } else if model.selectedResultTab == "Explain" {
         planResults
       } else {
-        explainPlaceholder
+        if let failure = model.executionFailure {
+          Text(failure).textSelection(.enabled).padding(20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else if let report = model.executionReport {
+          commandResults(report)
+        } else {
+          explainPlaceholder
+        }
       }
     }
     .background(SolnariTheme.elevated)
@@ -451,11 +459,57 @@ private struct ResultsPane: View {
     }
   }
 
+  private func commandResults(_ report: QueryExecutionReport) -> some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 12) {
+        Label(settings.text("Command execution completed"), systemImage: "checkmark.circle")
+          .font(.headline)
+        Text(settings.text(report.transactionMessage))
+        Text(
+          "\(settings.text("Statements completed")): \(report.statementCount ?? report.commands.count)"
+        )
+        ForEach(Array(report.commands.enumerated()), id: \.offset) { index, command in
+          HStack {
+            Text("\(index + 1). \(command.tag)").monospaced()
+            Spacer()
+            if let affectedRows = command.affectedRows {
+              Text("\(settings.text("Affected rows")): \(affectedRows)")
+            }
+            Image(systemName: "checkmark.circle")
+              .accessibilityLabel(settings.text("Command execution completed"))
+          }
+        }
+        if let notice = report.resultNotice {
+          Label(settings.text(notice), systemImage: "exclamationmark.triangle")
+            .foregroundStyle(SolnariTheme.orange)
+        }
+        ForEach(Array((report.notices ?? []).enumerated()), id: \.offset) { _, notice in
+          Text("\(notice.severity): \(notice.message)")
+            .foregroundStyle(SolnariTheme.orange)
+            .textSelection(.enabled)
+        }
+        Text(settings.text("Execution succeeded; resulting database state has not been verified."))
+          .font(.caption).foregroundStyle(.secondary)
+        if (report.statementCount ?? report.commands.count) > 1 {
+          Text(settings.text("Only the last tabular result is displayed."))
+            .font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      .padding(20)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
   private var resultToolbar: some View {
     HStack(spacing: 18) {
       resultTab("Results", symbol: "tablecells")
       resultTab("Explain", symbol: "chart.bar.xaxis")
       resultTab("Messages", symbol: "text.bubble")
+      if model.canVerifyPrivileges {
+        Button(settings.text("Verify privileges")) {
+          Task { await model.verifyPrivileges() }
+        }
+      }
       Spacer()
       if let exportNotice {
         Label(exportNotice, systemImage: "checkmark.circle.fill")

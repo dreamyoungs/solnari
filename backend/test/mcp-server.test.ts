@@ -1,6 +1,9 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SolnariBridge } from "../src/mcp-app-bridge.js";
+import {
+  SolnariBridgeError,
+  type SolnariBridge,
+} from "../src/mcp-app-bridge.js";
 import { createSolnariMCPServer } from "../src/mcp-server.js";
 
 describe("Solnari MCP server", () => {
@@ -80,12 +83,23 @@ describe("Solnari MCP server", () => {
     };
     await client.callTool({ name: "solnari_execute_query", arguments: query });
     expect(call).toHaveBeenCalledWith("executeQuery", query);
-    call.mockRejectedValueOnce(new Error("Read / Write access is required."));
+    const details = {
+      code: "MCP_ACCESS_LEVEL_MISMATCH",
+      accessLevel: "Read-only",
+      requestedOperation: "executeQuery",
+      nextStep: "Review SQL in Solnari.",
+      verification: "Use read-only catalog queries.",
+    };
+    call.mockRejectedValueOnce(
+      new SolnariBridgeError("Read / Write access is required.", details),
+    );
     const denied = await client.callTool({
       name: "solnari_execute_query",
       arguments: query,
     });
     expect(denied.isError).toBe(true);
+    expect(denied.structuredContent).toEqual({ error: details });
+    expect(JSON.stringify(denied)).not.toContain(query.sql);
   });
 
   it("rejects invalid arguments before they reach Solnari", async () => {

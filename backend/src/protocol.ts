@@ -21,17 +21,26 @@ export interface RPCFailure {
   error: {
     code: number;
     message: string;
-    data?: { diagnosticCode: string };
+    data?: { diagnosticCode: string; queryDetails?: QueryFailureDetails };
   };
 }
 
 export type RPCResponse = RPCSuccess | RPCFailure;
+
+export interface QueryFailureDetails {
+  message: string;
+  sqlState: string | null;
+  position: number | null;
+  statementIndex: number | null;
+  transactionState: string;
+}
 
 export class RPCError extends Error {
   constructor(
     readonly code: number,
     message: string,
     readonly diagnosticCode: string,
+    readonly queryDetails?: QueryFailureDetails,
   ) {
     super(message);
   }

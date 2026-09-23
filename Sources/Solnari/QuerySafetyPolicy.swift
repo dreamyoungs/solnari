@@ -1,6 +1,17 @@
 import Foundation
 
 enum QuerySafetyPolicy {
+  static func containsPrivilegeChange(_ sql: String) -> Bool {
+    SQLTokenScanner(sql: sql).statements().contains { statement in
+      statement.first == "GRANT" || statement.first == "REVOKE"
+    }
+  }
+
+  static func startsTransaction(_ sql: String) -> Bool {
+    let first = (try? PlanSQLScanner.tokens(sql: sql, engine: .postgresql)) ?? []
+    return first.first == "BEGIN" || Array(first.prefix(2)) == ["START", "TRANSACTION"]
+  }
+
   private static let readOnlyStarts = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"]
   private static let mutatingKeywords: Set<String> = [
     "ALTER", "ANALYZE", "ATTACH", "BEGIN", "CALL", "COMMIT", "COPY", "CREATE", "DELETE",

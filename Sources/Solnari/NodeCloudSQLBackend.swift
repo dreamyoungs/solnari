@@ -43,6 +43,7 @@ actor NodeCloudSQLBackend {
     let columns: [String]
     let rows: [[Cell]]
     let durationMilliseconds: Int
+    let report: QueryExecutionReport?
   }
 
   private let client: NodeBackendClient
@@ -125,7 +126,8 @@ actor NodeCloudSQLBackend {
         columns: response.columns,
         rows: response.rows.map { $0.map(Self.cellValue) }
       ),
-      durationMilliseconds: response.durationMilliseconds
+      durationMilliseconds: response.durationMilliseconds,
+      report: response.report
     )
   }
 

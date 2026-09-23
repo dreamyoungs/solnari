@@ -12,14 +12,25 @@ struct MCPBridgeResponse: Codable, Sendable {
   let ok: Bool
   let resultJSON: String?
   let error: String?
+  var errorDetails: MCPFailureDetails? = nil
 
   static func success(id: String, resultJSON: String) -> MCPBridgeResponse {
     MCPBridgeResponse(id: id, ok: true, resultJSON: resultJSON, error: nil)
   }
 
-  static func failure(id: String, message: String) -> MCPBridgeResponse {
-    MCPBridgeResponse(id: id, ok: false, resultJSON: nil, error: message)
+  static func failure(id: String, message: String, details: MCPFailureDetails? = nil)
+    -> MCPBridgeResponse
+  {
+    MCPBridgeResponse(id: id, ok: false, resultJSON: nil, error: message, errorDetails: details)
   }
+}
+
+struct MCPFailureDetails: Codable, Sendable {
+  let code: String
+  let accessLevel: String
+  let requestedOperation: String
+  let nextStep: String
+  let verification: String
 }
 
 final class LocalMCPBridge: @unchecked Sendable {
