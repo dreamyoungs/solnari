@@ -43,7 +43,9 @@ jobs:
         run: swift format lint --recursive --strict Sources Tests
 
       - name: Run Swift tests
-        run: swift test
+        run: |
+          npm --prefix backend run build
+          swift test
 
       - name: Check Node formatting and types
         run: |
