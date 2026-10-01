@@ -491,3 +491,11 @@
 "Native PostgreSQL transactions must be run as one complete BEGIN … COMMIT or ROLLBACK script, without intermediate commits or AND CHAIN." = "직접 연결의 PostgreSQL 트랜잭션은 BEGIN부터 COMMIT 또는 ROLLBACK까지 한 번에 실행해야 합니다. 중간 커밋과 AND CHAIN은 지원하지 않습니다.";
 "Command list truncated." = "명령 목록 일부가 생략되었습니다.";
 "This Codex CLI version has not been verified. Supported versions: 0.153.x and 0.155.0-alpha.16." = "검증되지 않은 Codex CLI 버전입니다. 지원 버전: 0.153.x 및 0.155.0-alpha.16.";
+
+"Refresh databases" = "데이터베이스 목록 새로고침";
+"Other database…" = "다른 데이터베이스…";
+"Switch database" = "데이터베이스 전환";
+"Database name" = "데이터베이스 이름";
+"Switch database after queries and transactions finish." = "쿼리와 트랜잭션을 마친 뒤 데이터베이스를 전환할 수 있습니다.";
+"Open another database using this connection's login and network settings." = "현재 연결의 로그인과 네트워크 설정으로 다른 데이터베이스를 엽니다.";
+"Opening the database timed out. The previous database is still selected." = "데이터베이스 연결 시간이 초과되었습니다. 기존 데이터베이스를 유지합니다.";

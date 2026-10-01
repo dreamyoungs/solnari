@@ -5,6 +5,9 @@ struct WorkspaceView: View {
   @EnvironmentObject private var model: WorkspaceModel
   @EnvironmentObject private var settings: AppSettings
   @State private var editorHeight: CGFloat?
+  @State private var showDatabaseEntry = false
+  @State private var databaseEntry = ""
+  @State private var databaseEntryProfileID: UUID?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -53,6 +56,66 @@ struct WorkspaceView: View {
     }
   }
 
+  private func databaseSelector(_ connection: ConnectionProfile) -> some View {
+    Menu {
+      ForEach(
+        Array(Set((model.availableDatabases[connection.id] ?? []) + [connection.database]))
+          .sorted(), id: \.self
+      ) { database in
+        Button {
+          Task { await model.switchDatabase(to: database, profileID: connection.id) }
+        } label: {
+          if database == connection.database {
+            Label(database, systemImage: "checkmark")
+          } else {
+            Text(database)
+          }
+        }
+      }
+      Divider()
+      Button(settings.text("Refresh databases")) {
+        Task { await model.loadAvailableDatabases() }
+      }
+      Button(settings.text("Other database…")) {
+        databaseEntry = ""
+        databaseEntryProfileID = connection.id
+        showDatabaseEntry = true
+      }
+    } label: {
+      HStack(spacing: 5) {
+        Text(connection.database)
+        if model.isConnecting || model.loadingDatabaseProfileIDs.contains(connection.id) {
+          ProgressView().controlSize(.mini)
+        }
+      }
+      .font(.system(size: 13))
+      .foregroundStyle(.secondary)
+    }
+    .menuStyle(.borderlessButton)
+    .fixedSize()
+    .disabled(!model.canSwitchDatabase)
+    .help(settings.text("Switch database after queries and transactions finish."))
+    .task(
+      id:
+        "\(model.selectedDatabaseSessionID?.uuidString ?? "")-\(connection.status.rawValue)-\(model.isConnecting)"
+    ) {
+      await model.loadAvailableDatabases()
+    }
+    .alert(settings.text("Switch database"), isPresented: $showDatabaseEntry) {
+      TextField(settings.text("Database name"), text: $databaseEntry)
+      Button(settings.text("Cancel"), role: .cancel) {}
+      Button(settings.text("Connect")) {
+        guard model.selectedConnectionID == databaseEntryProfileID else { return }
+        let database = databaseEntry.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { await model.switchDatabase(to: database, profileID: databaseEntryProfileID) }
+      }
+      .disabled(databaseEntry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    } message: {
+      Text(
+        settings.text("Open another database using this connection's login and network settings."))
+    }
+  }
+
   private var connectionBar: some View {
     HStack(spacing: 10) {
       if let connection = model.selectedConnection {
@@ -63,9 +126,13 @@ struct WorkspaceView: View {
           Image(systemName: "chevron.right")
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle(.tertiary)
-          Text(connection.database)
-            .font(.system(size: 13))
-            .foregroundStyle(.secondary)
+          if connection.engine == .postgresql {
+            databaseSelector(connection)
+          } else {
+            Text(connection.database)
+              .font(.system(size: 13))
+              .foregroundStyle(.secondary)
+          }
         }
 
         DatabaseEnginePill(engine: connection.engine)
@@ -367,18 +434,15 @@ private struct SQLEditorPane: View {
   @ViewBuilder
   private var editor: some View {
     if let selectedTabID = model.selectedTabID,
-      let tab = model.editorTabs.first(where: { $0.id == selectedTabID })
+      model.editorTabs.contains(where: { $0.id == selectedTabID })
     {
-      HStack(spacing: 0) {
-        lineNumbers(for: tab.sql)
-        SQLTextEditor(
-          text: model.sqlBinding(for: selectedTabID),
-          engine: model.selectedConnection?.engine ?? .postgresql,
-          formatRequestID: model.formatRequestID,
-          onError: { model.presentedError = $0 }
-        )
-        .id(selectedTabID)
-      }
+      SQLTextEditor(
+        text: model.sqlBinding(for: selectedTabID),
+        engine: model.selectedConnection?.engine ?? .postgresql,
+        formatRequestID: model.formatRequestID,
+        onError: { model.presentedError = $0 }
+      )
+      .id(selectedTabID)
     } else {
       ContentUnavailableView {
         Label(settings.text("No query"), systemImage: "terminal")
@@ -386,24 +450,6 @@ private struct SQLEditorPane: View {
         Text(settings.text("Create a query tab to begin."))
       }
     }
-  }
-
-  private func lineNumbers(for sql: String) -> some View {
-    let count = max(1, sql.components(separatedBy: .newlines).count)
-    return VStack(alignment: .trailing, spacing: 0) {
-      ForEach(1...count, id: \.self) { line in
-        Text("\(line)")
-          .frame(height: 22, alignment: .trailing)
-      }
-      Spacer(minLength: 0)
-    }
-    .font(.system(size: 11, design: .monospaced))
-    .foregroundStyle(.tertiary)
-    .padding(.top, 12)
-    .padding(.horizontal, 9)
-    .frame(width: 43)
-    .background(SolnariTheme.subtleFill)
-    .overlay(alignment: .trailing) { Divider() }
   }
 }
 

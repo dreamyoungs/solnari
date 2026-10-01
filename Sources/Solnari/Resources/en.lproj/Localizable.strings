@@ -172,3 +172,11 @@
 "Native PostgreSQL transactions must be run as one complete BEGIN … COMMIT or ROLLBACK script, without intermediate commits or AND CHAIN." = "Native PostgreSQL transactions must be run as one complete BEGIN … COMMIT or ROLLBACK script, without intermediate commits or AND CHAIN.";
 "Command list truncated." = "Command list truncated.";
 "This Codex CLI version has not been verified. Supported versions: 0.153.x and 0.155.0-alpha.16." = "This Codex CLI version has not been verified. Supported versions: 0.153.x and 0.155.0-alpha.16.";
+
+"Refresh databases" = "Refresh databases";
+"Other database…" = "Other database…";
+"Switch database" = "Switch database";
+"Database name" = "Database name";
+"Switch database after queries and transactions finish." = "Switch database after queries and transactions finish.";
+"Open another database using this connection's login and network settings." = "Open another database using this connection's login and network settings.";
+"Opening the database timed out. The previous database is still selected." = "Opening the database timed out. The previous database is still selected.";

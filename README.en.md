@@ -20,8 +20,8 @@
 </p>
 
 > [!NOTE]
-> The current version is a **0.5.2 Apple silicon preview**. An unsigned DMG is available from
-> [GitHub Releases](https://github.com/dreamyoungs/solnari/releases/tag/v0.5.2). Until the project
+> The current version is a **0.6.0 Apple silicon preview**. An unsigned DMG is available from
+> [GitHub Releases](https://github.com/dreamyoungs/solnari/releases/tag/v0.6.0). Until the project
 > joins the Apple Developer Program, the app is not Developer ID-signed or notarized and requires
 > the one-time macOS approval described below.
 
@@ -62,6 +62,7 @@ Solnari now aims to be:
 - Safely quoted `SELECT` generation, read-only data opening, and qualified-name copying
 - Direct TCP, Google's official Cloud SQL Connector, SSH tunnel, and existing-resource or relay Kubernetes paths
 - ADC-based Cloud SQL automatic IAM authentication, engine-aware user suggestions, and project discovery
+- PostgreSQL database selection within one saved connection, with separate tabs and results per database
 - Saved-connection editing and reconnecting, with confirmation before deletion
 - Versioned JSON connection-profile import/export that excludes passwords and authentication credentials
 - Local connection definitions and a user-only AES-GCM credential vault
@@ -144,8 +145,8 @@ also enforce that Cloud SQL cannot silently fall back to `gcloud` or an external
 
 ### Install the Apple silicon DMG
 
-Download `Solnari-0.5.2-macos-arm64-unsigned.dmg` from the
-[Solnari 0.5.2 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.5.2). This free,
+Download `Solnari-0.6.0-macos-arm64-unsigned.dmg` from the
+[Solnari 0.6.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.6.0). This free,
 open-source preview was created without Apple Developer Program membership. It is ad-hoc signed
 and has not been notarized by Apple. Approve its first launch on an Apple silicon Mac as follows:
 
@@ -233,7 +234,7 @@ Create a test DMG without Apple Developer Program membership:
 ./Scripts/package-local-dmg.sh
 ```
 
-The output is `.build/release/Solnari-0.5.2-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
+The output is `.build/release/Solnari-0.6.0-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
 GitHub Release preview, it contains an ad-hoc signed app and is not notarized.
 The workflow applies a fixed 660×400 Finder window, positioned app and Applications icons, a Retina
 background, and a custom volume icon, then verifies the contents and a clean mount/unmount cycle.
@@ -260,7 +261,7 @@ export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
 ./Scripts/package-release.sh
 ```
 
-The output is `.build/release/Solnari-0.5.2-macos-arm64.dmg` with a SHA-256 file. The workflow signs
+The output is `.build/release/Solnari-0.6.0-macos-arm64.dmg` with a SHA-256 file. The workflow signs
 the app and DMG with Developer ID, notarizes the DMG, and staples the ticket. Before enrollment, the
 certificate and notary preflight checks intentionally prevent this workflow from running.
 

@@ -35,6 +35,11 @@ struct SQLTextEditor: NSViewRepresentable {
     editor.string = text
     editor.delegate = context.coordinator
     editor.setAccessibilityLabel("SQL")
+    editor.usesRuler = false
+    scroll.hasHorizontalRuler = false
+    scroll.hasVerticalRuler = true
+    scroll.verticalRulerView = SQLLineNumberRuler(scrollView: scroll, editor: editor)
+    scroll.rulersVisible = true
     return scroll
   }
 
@@ -45,6 +50,7 @@ struct SQLTextEditor: NSViewRepresentable {
     if editor.string != text {
       editor.string = text
       editor.undoManager?.removeAllActions()
+      (scroll.verticalRulerView as? SQLLineNumberRuler)?.updateLineStarts()
     }
     if coordinator.lastRequest != formatRequestID {
       coordinator.lastRequest = formatRequestID
@@ -69,6 +75,7 @@ struct SQLTextEditor: NSViewRepresentable {
 
     func textDidChange(_ notification: Notification) {
       guard let editor = notification.object as? NSTextView else { return }
+      (editor.enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler)?.updateLineStarts()
       parent.text = editor.string
     }
 
@@ -130,6 +137,120 @@ struct SQLTextEditor: NSViewRepresentable {
           range: NSRange(
             location: location, length: min($0.length, (sql as NSString).length - location)))
       }
+    }
+  }
+}
+
+/// A scroll-view ruler keeps line numbers inside the editor viewport and follows text layout.
+@MainActor
+final class SQLLineNumberRuler: NSRulerView {
+  struct LineLabel {
+    let number: Int
+    let rect: NSRect
+  }
+
+  private weak var textView: NSTextView?
+  private var lineStarts = [0]
+  private let numberFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+
+  init(scrollView: NSScrollView, editor: NSTextView) {
+    textView = editor
+    super.init(scrollView: scrollView, orientation: .verticalRuler)
+    clientView = editor
+    clipsToBounds = true
+    reservedThicknessForMarkers = 0
+    reservedThicknessForAccessoryView = 0
+    scrollView.contentView.postsBoundsChangedNotifications = true
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(scrollBoundsChanged), name: NSView.boundsDidChangeNotification,
+      object: scrollView.contentView)
+    updateLineStarts()
+  }
+
+  required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  deinit { NotificationCenter.default.removeObserver(self) }
+
+  override var isFlipped: Bool { true }
+
+  @objc private func scrollBoundsChanged(_ notification: Notification) {
+    needsDisplay = true
+  }
+
+  func updateLineStarts() {
+    guard let editor = textView else { return }
+    let text = editor.string as NSString
+    lineStarts = [0]
+    var index = 0
+    while index < text.length {
+      index = NSMaxRange(text.lineRange(for: NSRange(location: index, length: 0)))
+      if index < text.length { lineStarts.append(index) }
+    }
+    if text.length > 0,
+      text.lineRange(for: NSRange(location: text.length, length: 0)).location == text.length
+    {
+      lineStarts.append(text.length)
+    }
+    let label = String(lineStarts.count) as NSString
+    ruleThickness = max(43, label.size(withAttributes: [.font: numberFont]).width + 18)
+    needsDisplay = true
+  }
+
+  var visibleLineLabels: [LineLabel] {
+    guard let editor = textView,
+      let layout = editor.layoutManager, let container = editor.textContainer
+    else { return [] }
+    let origin = editor.textContainerOrigin
+    let visible = editor.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
+    layout.ensureLayout(forBoundingRect: visible, in: container)
+    let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
+    let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+    // Include the logical line containing the first visible glyph, then visit visible starts only.
+    var lower = 0
+    var upper = lineStarts.count
+    while lower < upper {
+      let middle = (lower + upper) / 2
+      if lineStarts[middle] <= characters.location {
+        lower = middle + 1
+      } else {
+        upper = middle
+      }
+    }
+    var labels: [LineLabel] = []
+    for index in max(0, lower - 1)..<lineStarts.count {
+      let start = lineStarts[index]
+      if start > NSMaxRange(characters) { break }
+      let fragment: NSRect
+      if start == (editor.string as NSString).length {
+        fragment = layout.extraLineFragmentRect
+      } else {
+        fragment = layout.lineFragmentRect(
+          forGlyphAt: layout.glyphIndexForCharacter(at: start), effectiveRange: nil)
+      }
+      var rect = convert(fragment.offsetBy(dx: origin.x, dy: origin.y), from: editor)
+      rect.origin.x = bounds.minX
+      rect.size.width = bounds.width
+      if rect.intersects(bounds) { labels.append(LineLabel(number: index + 1, rect: rect)) }
+    }
+    return labels
+  }
+
+  override func draw(_ dirtyRect: NSRect) {
+    NSColor.textBackgroundColor.setFill()
+    dirtyRect.intersection(bounds).fill()
+    NSColor.labelColor.withAlphaComponent(0.045).setFill()
+    dirtyRect.intersection(bounds).fill()
+    NSColor.separatorColor.setFill()
+    NSRect(x: bounds.maxX - 1, y: bounds.minY, width: 1, height: bounds.height).fill()
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: numberFont, .foregroundColor: NSColor.tertiaryLabelColor,
+    ]
+    for label in visibleLineLabels {
+      let text = String(label.number) as NSString
+      let size = text.size(withAttributes: attributes)
+      text.draw(
+        at: NSPoint(x: bounds.maxX - size.width - 9, y: label.rect.midY - size.height / 2),
+        withAttributes: attributes)
     }
   }
 }

@@ -90,6 +90,28 @@ actor DatabaseBackend {
     }
   }
 
+  func openDatabase(profile: ConnectionProfile, password: String) async throws
+    -> (metadata: ConnectionMetadata, schema: SchemaSnapshot)
+  {
+    try await ConnectionTestDeadline.run(
+      timeout: .seconds(connectionTestTimeoutSeconds(for: profile)),
+      timeoutError: SolnariDatabaseError.databaseSwitchTimedOut,
+      operation: { [self] in
+        do {
+          let metadata = try await connect(profile: profile, password: password)
+          try Task.checkCancellation()
+          let schema = try await loadSchema(profileID: profile.id)
+          try Task.checkCancellation()
+          return (metadata, schema)
+        } catch {
+          await disconnect(profileID: profile.id)
+          throw error
+        }
+      },
+      cleanup: { await self.disconnect(profileID: profile.id) }
+    )
+  }
+
   func disconnect(profileID: UUID) async {
     let profile = connectedProfiles.removeValue(forKey: profileID)
     let engine = connectedEngines.removeValue(forKey: profileID)

@@ -7,6 +7,61 @@ import Testing
 @MainActor
 struct FeaturePreviewTests {
   @Test(
+    "PostgreSQL DB 전환 선택기를 한국어와 영어의 두 테마로 렌더링한다",
+    .enabled(
+      if: ProcessInfo.processInfo.environment["SOLNARI_RENDER_UI"] != nil
+        && ProcessInfo.processInfo.environment["SOLNARI_TEST_POSTGRES_HOST"] == "127.0.0.1"
+        && ProcessInfo.processInfo.environment["SOLNARI_TEST_POSTGRES_SECOND_DATABASE"] != nil))
+  func renderDatabaseSelector() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let suiteName = "DatabaseSelectorUI.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("DatabaseSelectorUI-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let profile = ConnectionProfile(
+      name: "Local PostgreSQL",
+      database: try #require(environment["SOLNARI_TEST_POSTGRES_DATABASE"]),
+      engine: .postgresql, transport: .direct, host: "127.0.0.1",
+      port: Int(environment["SOLNARI_TEST_POSTGRES_PORT"] ?? "5432")!,
+      username: environment["SOLNARI_TEST_POSTGRES_USER"] ?? "postgres",
+      requiresTLS: false, clientEncoding: "UTF8")
+    let store = ConnectionProfileStore(defaults: defaults)
+    try store.save([profile])
+    let passwords = LocalEncryptedPasswordStore(directoryURL: directory)
+    try passwords.save(environment["SOLNARI_TEST_POSTGRES_PASSWORD"] ?? "", for: profile.id)
+    let model = WorkspaceModel(profileStore: store, passwordStore: passwords)
+    await model.connect(profileID: profile.id)
+    await model.switchDatabase(
+      to: try #require(environment["SOLNARI_TEST_POSTGRES_SECOND_DATABASE"]))
+    model.useSQL("SELECT current_database() AS database, current_user AS user;")
+    await model.runCurrentQuery()
+    let settings = AppSettings()
+    let originalLanguage = settings.language
+    defer { settings.language = originalLanguage }
+    let output = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+      .appendingPathComponent(".build/feature-previews")
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    for language in [AppLanguage.korean, .english] {
+      settings.language = language
+      for dark in [false, true] {
+        let content = HStack(spacing: 0) {
+          SidebarView().frame(width: 250)
+          WorkspaceView()
+        }
+        .environmentObject(model).environmentObject(settings).environment(\.locale, settings.locale)
+        try await render(
+          content, size: NSSize(width: 1200, height: 800), dark: dark,
+          to: output.appendingPathComponent(
+            "database-selector-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+      }
+    }
+    #expect(model.availableDatabases[profile.id]?.contains(profile.database) == true)
+    await model.suspendConnections()
+  }
+
+  @Test(
     "PostgreSQL 명령 결과를 한국어·영어와 두 테마로 렌더링한다",
     .enabled(
       if: ProcessInfo.processInfo.environment["SOLNARI_RENDER_UI"] != nil

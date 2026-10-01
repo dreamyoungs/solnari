@@ -5,6 +5,32 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.6.0 Apple Silicon preview] - 2026-10-01
+
+### Added
+
+- Switch PostgreSQL databases from the workspace connection bar without duplicating saved profiles.
+  Preserve tabs and results per database, retain the saved default database, and keep the previous
+  session when the target connection fails or times out.
+- Refresh database discovery and open a database by name. Preserve transport and read-only settings,
+  reset assistant context, and reject writes using an MCP connection ID from the previous database.
+
+### Fixed
+
+- Keep long SQL pastes inside the editor viewport. Line numbers now follow the native text layout
+  and scroll position rather than expanding over connection details, query tabs, and the toolbar.
+- Update the transitive brace-expansion dependency to 2.1.7 to address reported denial-of-service
+  vulnerabilities; no direct dependency or API changes.
+
+### Verification and limitations
+
+- Local PostgreSQL switching, failed-target recovery, workspace restoration, reconnect, lifecycle
+  cleanup, stale MCP IDs, and read-only sessions were verified. LF/CRLF long SQL paste and line-number
+  scrolling were tested, with Korean/English and light/dark UI previews.
+- Live Cloud SQL, SSH, and Kubernetes database switching were not tested. Database-specific session
+  settings and temporary tables do not survive a switch. This preview remains ad-hoc signed and
+  not notarized.
+
 ## [0.5.2 Apple Silicon preview] - 2026-09-23
 
 ### Fixed
@@ -134,7 +160,8 @@ All notable changes to Solnari are documented here. The project follows
 - Table data editing, query cancellation, organization-managed policies, and full orphan recovery
   remain in progress.
 
-[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/dreamyoungs/solnari/compare/v0.6.0...HEAD
+[0.6.0 Apple Silicon preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.6.0
 [0.4.0 Apple Silicon preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.4.0
 [0.3.0 Apple Silicon preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.3.0
 [0.2.1 source preview]: https://github.com/dreamyoungs/solnari/releases/tag/v0.2.1

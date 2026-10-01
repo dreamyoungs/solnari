@@ -291,7 +291,7 @@ final class MCPAccessController: ObservableObject {
 
   private func connectionSnapshot(from profile: ConnectionProfile) -> MCPConnectionSnapshot {
     MCPConnectionSnapshot(
-      connectionID: profile.id,
+      connectionID: workspace.selectedDatabaseSessionID ?? profile.id,
       name: profile.name,
       database: profile.database,
       engine: profile.engine.rawValue,

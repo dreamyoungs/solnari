@@ -206,7 +206,7 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
       && kubernetes?.usePersonalIAM == true
   }
 
-  let id: UUID
+  private(set) var id: UUID
   var name: String
   var database: String
   var engine: DatabaseEngine
@@ -236,6 +236,13 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
 
   var effectiveAccessLevel: DatabaseAccessLevel {
     accessLevel ?? .readWrite
+  }
+
+  func sessionProfile(id: UUID, database: String) -> ConnectionProfile {
+    var copy = self
+    copy.id = id
+    copy.database = database
+    return copy
   }
 
   var subtitle: String {
@@ -949,6 +956,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case transportFailed(String)
   case transportTimedOut
   case connectionTestTimedOut
+  case databaseSwitchTimedOut
   case queryNotAllowedForAccessLevel
   case invalidProfileStore
 
@@ -963,6 +971,8 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .missingExecutable(let name): "Install or configure the required \(name) command."
     case .transportFailed(let message): "The connection path failed: \(message)"
     case .transportTimedOut: "The local connection path did not become ready in time."
+    case .databaseSwitchTimedOut:
+      "Opening the database timed out. The previous database is still selected."
     case .connectionTestTimedOut: "The connection test timed out. Check the address and path."
     case .queryNotAllowedForAccessLevel:
       "This SQL is not allowed by the connection's access level."

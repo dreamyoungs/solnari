@@ -23,6 +23,11 @@ final class WorkspaceModel: ObservableObject {
   private let passwordStore: LocalEncryptedPasswordStore
   private var activeSuspensionCleanups = 0
   private var resumeRequestedAfterCleanup = false
+  @Published private var activeDatabaseProfiles: [UUID: ConnectionProfile] = [:]
+  @Published private(set) var availableDatabases: [UUID: [String]] = [:]
+  @Published private(set) var loadingDatabaseProfileIDs: Set<UUID> = []
+  private var connectionOperationGeneration = UUID()
+  private var databaseWorkspaces: [UUID: [String: ConnectionWorkspace]] = [:]
   private var planTasks: [UUID: Task<Void, Never>] = [:]
 
   init(
@@ -52,7 +57,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   var selectedConnection: ConnectionProfile? {
-    connections.first { $0.id == selectedConnectionID }
+    selectedConnectionID.flatMap { profileForWorkspace(for: $0) }
   }
 
   var schemaSnapshot: SchemaSnapshot {
@@ -95,7 +100,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   var canVerifyPrivileges: Bool {
-    workspace(for: selectedConnectionID).privilegeBaseline != nil && !isRunning
+    workspace(for: selectedConnectionID).privilegeBaseline != nil && !isRunning && !isConnecting
       && selectedConnection?.status == .connected
   }
 
@@ -110,7 +115,8 @@ final class WorkspaceModel: ObservableObject {
     updateWorkspace(for: profileID) { $0.isRunning = true }
     defer { updateWorkspace(for: profileID) { $0.isRunning = false } }
     do {
-      let result = try await backend.execute(profileID: profileID, sql: PrivilegeVerification.sql)
+      let result = try await backend.execute(
+        profileID: backendSessionID(for: profileID), sql: PrivilegeVerification.sql)
       guard let changes = PrivilegeVerification.changes(before: baseline, after: result.table),
         result.report?.resultNotice == nil
       else { throw SolnariDatabaseError.invalidServerResponse }
@@ -186,9 +192,10 @@ final class WorkspaceModel: ObservableObject {
       $0.planMessage = "Loading query plan…"
       $0.isRunning = true
     }
+    let sessionID = backendSessionID(for: profile.id)
     planTasks[profile.id] = Task { [weak self, backend] in
       do {
-        let result = try await backend.explain(profileID: profile.id, sql: sql)
+        let result = try await backend.explain(profileID: sessionID, sql: sql)
         try Task.checkCancellation()
         self?.updateWorkspace(for: profile.id) {
           $0.planTable = result.table
@@ -272,7 +279,8 @@ final class WorkspaceModel: ObservableObject {
     guard workspace(for: profileID).schema.objects.contains(where: { $0.id == object.id }) else {
       throw MCPAccessError.schemaObjectNotFound
     }
-    return try await backend.loadSchemaObjectDetails(profileID: profileID, object: object)
+    return try await backend.loadSchemaObjectDetails(
+      profileID: backendSessionID(for: profileID), object: object)
   }
 
   func generateSelect(for object: SchemaObject) {
@@ -378,20 +386,28 @@ final class WorkspaceModel: ObservableObject {
     replacing profileID: UUID? = nil,
     creating newProfileID: UUID? = nil
   ) async throws {
-    guard !areConnectionOperationsSuspended else { throw SolnariDatabaseError.notConnected }
+    guard !areConnectionOperationsSuspended,
+      profileID.map({ !connectingProfileIDs.contains($0) }) ?? true
+    else { throw SolnariDatabaseError.notConnected }
     let originalConnections = connections
     let originalSelection = selectedConnectionID
     let originalWorkspaces = connectionWorkspaces
     let existingPassword = try profileID.flatMap { try passwordStore.password(for: $0) }
     let password = try resolvedPassword(for: draft, replacing: profileID)
     var profile = try draft.makeProfile(id: profileID ?? newProfileID ?? UUID())
+    let originalActiveProfile = activeDatabaseProfiles[profile.id]
+    let originalDatabase = profileForWorkspace(for: profile.id)?.database
 
     do {
+      if let active = activeDatabaseProfiles[profile.id], active.id != profile.id {
+        await backend.disconnect(profileID: active.id)
+      }
+      activeDatabaseProfiles.removeValue(forKey: profile.id)
       let metadata = try await backend.connect(profile: profile, password: password)
       guard !areConnectionOperationsSuspended else {
         throw SolnariDatabaseError.notConnected
       }
-      let loadedSchema = try await backend.loadSchema(profileID: profile.id)
+      let loadedSchema = try await backend.loadSchema(profileID: backendSessionID(for: profile.id))
       if draft.usesEphemeralCredentials {
         try passwordStore.delete(for: profile.id)
       } else if !draft.password.isEmpty || profileID == nil {
@@ -404,15 +420,20 @@ final class WorkspaceModel: ObservableObject {
       } else {
         connections.insert(profile, at: 0)
       }
-      if connectionWorkspaces[profile.id] == nil {
+      if connectionWorkspaces[profile.id] == nil
+        || (originalDatabase != nil && originalDatabase != profile.database)
+      {
         connectionWorkspaces[profile.id] = ConnectionWorkspace()
       }
+      databaseWorkspaces.removeValue(forKey: profile.id)
+      availableDatabases.removeValue(forKey: profile.id)
       updateWorkspace(for: profile.id) { $0.schema = loadedSchema }
       selectedConnectionID = profile.id
       try profileStore.save(connections)
     } catch {
       await backend.disconnect(profileID: profile.id)
       connections = originalConnections
+      activeDatabaseProfiles[profile.id] = originalActiveProfile
       if let restoredIndex = connections.firstIndex(where: { $0.id == profile.id }) {
         connections[restoredIndex].status = .disconnected
       }
@@ -470,20 +491,27 @@ final class WorkspaceModel: ObservableObject {
     }
 
     do {
-      let profile = connections[index]
+      let current = profileForWorkspace(for: profileID) ?? connections[index]
+      let profile = current.sessionProfile(
+        id: backendSessionID(for: profileID), database: current.database)
       let password = profile.usesPersonalIAM ? "" : try passwordStore.password(for: profileID) ?? ""
       let metadata = try await backend.connect(profile: profile, password: password)
       guard !areConnectionOperationsSuspended else {
-        await backend.disconnect(profileID: profileID)
+        await backend.disconnect(profileID: backendSessionID(for: profileID))
         connectingProfileIDs.remove(profileID)
         return
       }
       guard let refreshedIndex = connections.firstIndex(where: { $0.id == profileID }) else {
         throw SolnariDatabaseError.missingConnection
       }
+      var active = profile
+      apply(metadata, to: &active)
+      activeDatabaseProfiles[profileID] = active
+      let defaultDatabase = connections[refreshedIndex].database
       apply(metadata, to: &connections[refreshedIndex])
+      connections[refreshedIndex].database = defaultDatabase
       connections[refreshedIndex].status = .connected
-      let loadedSchema = try await backend.loadSchema(profileID: profileID)
+      let loadedSchema = try await backend.loadSchema(profileID: backendSessionID(for: profileID))
       updateWorkspace(for: profileID) { $0.schema = loadedSchema }
       try profileStore.save(connections)
     } catch {
@@ -505,8 +533,12 @@ final class WorkspaceModel: ObservableObject {
     else {
       return
     }
+    let sessionID = backendSessionID(for: profileID)
     do {
-      let loadedSchema = try await backend.loadSchema(profileID: profileID)
+      let loadedSchema = try await backend.loadSchema(profileID: sessionID)
+      guard backendSessionID(for: profileID) == sessionID, !areConnectionOperationsSuspended else {
+        return
+      }
       updateWorkspace(for: profileID) { $0.schema = loadedSchema }
     } catch {
       presentedError = error.localizedDescription
@@ -518,12 +550,15 @@ final class WorkspaceModel: ObservableObject {
       plan.cancel()
       await plan.value
     }
-    await backend.disconnect(profileID: profileID)
+    await backend.disconnect(profileID: backendSessionID(for: profileID))
     do {
       try passwordStore.delete(for: profileID)
     } catch {
       presentedError = error.localizedDescription
     }
+    activeDatabaseProfiles.removeValue(forKey: profileID)
+    databaseWorkspaces.removeValue(forKey: profileID)
+    availableDatabases.removeValue(forKey: profileID)
     connections.removeAll { $0.id == profileID }
     connectionWorkspaces.removeValue(forKey: profileID)
     connectingProfileIDs.remove(profileID)
@@ -539,7 +574,7 @@ final class WorkspaceModel: ObservableObject {
 
   func runCurrentQuery() async {
     guard !areConnectionOperationsSuspended, let profileID = selectedConnectionID,
-      !workspace(for: profileID).isRunning,
+      !workspace(for: profileID).isRunning, !connectingProfileIDs.contains(profileID),
       selectedTab?.kind == .query,
       let sql = selectedTab?.sql.trimmingCharacters(in: .whitespacesAndNewlines), !sql.isEmpty
     else { return }
@@ -570,7 +605,7 @@ final class WorkspaceModel: ObservableObject {
     }
     if engine == .postgresql && QuerySafetyPolicy.containsPrivilegeChange(sql) {
       if let before = try? await backend.execute(
-        profileID: profileID, sql: PrivilegeVerification.sql),
+        profileID: backendSessionID(for: profileID), sql: PrivilegeVerification.sql),
         before.table.rows.count <= 1000, before.report?.resultNotice == nil
       {
         updateWorkspace(for: profileID) { $0.privilegeBaseline = before.table }
@@ -582,7 +617,7 @@ final class WorkspaceModel: ObservableObject {
       }
     }
     do {
-      let result = try await backend.execute(profileID: profileID, sql: sql)
+      let result = try await backend.execute(profileID: backendSessionID(for: profileID), sql: sql)
       updateWorkspace(for: profileID) {
         $0.queryTable = result.table
         $0.executionReport = result.report
@@ -623,6 +658,7 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func suspendConnections() async {
+    connectionOperationGeneration = UUID()
     await assistant.shutdown()
     let pendingPlans = Array(planTasks.values)
     for task in pendingPlans { task.cancel() }
@@ -640,6 +676,11 @@ final class WorkspaceModel: ObservableObject {
         $0.executionReport = nil
         $0.executionFailure = nil
         $0.privilegeBaseline = nil
+      }
+    }
+    for (profileID, workspaces) in databaseWorkspaces {
+      for database in workspaces.keys {
+        databaseWorkspaces[profileID]?[database]?.schema = .empty
       }
     }
     for index in connections.indices {
@@ -743,13 +784,20 @@ final class WorkspaceModel: ObservableObject {
   }
 
   func mcpSelectedProfile() throws -> ConnectionProfile {
-    guard let selectedConnection else { throw MCPAccessError.noSelectedConnection }
+    guard var selectedConnection else { throw MCPAccessError.noSelectedConnection }
+    if connectingProfileIDs.contains(selectedConnection.id) {
+      selectedConnection.status = .connecting
+    }
     return selectedConnection
   }
 
   func mcpSchemaSnapshot() async throws -> [SchemaObject] {
     let profile = try requireMCPConnection()
-    let snapshot = try await backend.loadSchema(profileID: profile.id)
+    let sessionID = backendSessionID(for: profile.id)
+    let snapshot = try await backend.loadSchema(profileID: sessionID)
+    guard backendSessionID(for: profile.id) == sessionID, !areConnectionOperationsSuspended else {
+      throw MCPAccessError.selectedConnectionChanged
+    }
     updateWorkspace(for: profile.id) { $0.schema = snapshot }
     return snapshot.objects
   }
@@ -760,7 +808,8 @@ final class WorkspaceModel: ObservableObject {
     kind: SchemaObjectKind?
   ) async throws -> SchemaObjectDetails {
     let profile = try requireMCPConnection()
-    let objects = try await backend.loadSchema(profileID: profile.id).objects
+    let sessionID = backendSessionID(for: profile.id)
+    let objects = try await backend.loadSchema(profileID: sessionID).objects
     guard
       let object = objects.first(where: {
         $0.schema == schema && $0.name == name && (kind == nil || $0.kind == kind)
@@ -768,7 +817,7 @@ final class WorkspaceModel: ObservableObject {
     else {
       throw MCPAccessError.schemaObjectNotFound
     }
-    return try await backend.loadSchemaObjectDetails(profileID: profile.id, object: object)
+    return try await backend.loadSchemaObjectDetails(profileID: sessionID, object: object)
   }
 
   func mcpExecuteReadOnlyQuery(sql: String, maximumRows: Int) async throws -> MCPQuerySnapshot {
@@ -785,7 +834,9 @@ final class WorkspaceModel: ObservableObject {
     -> MCPQuerySnapshot
   {
     let profile = try requireMCPConnection()
-    guard profile.id == connectionID else { throw MCPAccessError.selectedConnectionChanged }
+    guard backendSessionID(for: profile.id) == connectionID else {
+      throw MCPAccessError.selectedConnectionChanged
+    }
     guard profile.effectiveAccessLevel == .readWrite else {
       throw MCPAccessError.readWriteConnectionRequired
     }
@@ -808,7 +859,7 @@ final class WorkspaceModel: ObservableObject {
     let result: QueryExecutionResult
     do {
       result = try await backend.execute(
-        profileID: profile.id, sql: sql, requiredAccessLevel: accessLevel)
+        profileID: backendSessionID(for: profile.id), sql: sql, requiredAccessLevel: accessLevel)
       updateWorkspace(for: profile.id) { $0.transactionState = result.report?.transactionState }
     } catch {
       updateWorkspace(for: profile.id) {
@@ -817,7 +868,7 @@ final class WorkspaceModel: ObservableObject {
       throw error
     }
     if accessLevel == .readWrite,
-      let snapshot = try? await backend.loadSchema(profileID: profile.id),
+      let snapshot = try? await backend.loadSchema(profileID: backendSessionID(for: profile.id)),
       !areConnectionOperationsSuspended,
       connections.first(where: { $0.id == profile.id })?.status == .connected
     {
@@ -841,7 +892,112 @@ final class WorkspaceModel: ObservableObject {
   private func requireMCPConnection() throws -> ConnectionProfile {
     guard !areConnectionOperationsSuspended else { throw MCPAccessError.connectionNotReady }
     let profile = try mcpSelectedProfile()
-    guard profile.status == .connected else { throw MCPAccessError.connectionNotReady }
+    guard profile.status == .connected, !connectingProfileIDs.contains(profile.id) else {
+      throw MCPAccessError.connectionNotReady
+    }
+    return profile
+  }
+
+  var selectedDatabaseSessionID: UUID? {
+    selectedConnectionID.map { backendSessionID(for: $0) }
+  }
+
+  var canSwitchDatabase: Bool {
+    guard let profile = selectedConnection else { return false }
+    return profile.engine == .postgresql && profile.status == .connected
+      && !areConnectionOperationsSuspended && !isRunning && !isConnecting
+      && !assistant.isBusy && !loadingDatabaseProfileIDs.contains(profile.id)
+      && !["inTransaction", "failedTransaction"].contains(
+        workspace(for: profile.id).transactionState ?? "")
+  }
+
+  func loadAvailableDatabases() async {
+    guard canSwitchDatabase, let profile = selectedConnection else { return }
+    let sessionID = backendSessionID(for: profile.id)
+    let generation = connectionOperationGeneration
+    loadingDatabaseProfileIDs.insert(profile.id)
+    defer { loadingDatabaseProfileIDs.remove(profile.id) }
+    do {
+      let result = try await backend.execute(
+        profileID: sessionID,
+        sql: """
+          SELECT datname::text
+          FROM pg_catalog.pg_database
+          WHERE datallowconn AND NOT datistemplate
+            AND pg_catalog.has_database_privilege(oid, 'CONNECT')
+          ORDER BY datname;
+          """)
+      guard backendSessionID(for: profile.id) == sessionID, !areConnectionOperationsSuspended,
+        generation == connectionOperationGeneration
+      else { return }
+      availableDatabases[profile.id] = result.table.rows.compactMap { row in
+        guard case .text(let name) = row.first else { return nil }
+        return name
+      }
+    } catch {
+      if !areConnectionOperationsSuspended, generation == connectionOperationGeneration {
+        presentedError = error.localizedDescription
+      }
+    }
+  }
+
+  func switchDatabase(to database: String, profileID expectedProfileID: UUID? = nil) async {
+    guard canSwitchDatabase, let profile = selectedConnection,
+      expectedProfileID == nil || expectedProfileID == profile.id,
+      !database.isEmpty, database != profile.database
+    else { return }
+    let profileID = profile.id
+    let generation = connectionOperationGeneration
+    let previousSessionID = backendSessionID(for: profileID)
+    var candidate = profile.sessionProfile(id: UUID(), database: database)
+    connectingProfileIDs.insert(profileID)
+    defer {
+      if generation == connectionOperationGeneration { connectingProfileIDs.remove(profileID) }
+    }
+    do {
+      let password = profile.usesPersonalIAM ? "" : try passwordStore.password(for: profileID) ?? ""
+      let (metadata, schema) = try await backend.openDatabase(
+        profile: candidate, password: password)
+      guard !areConnectionOperationsSuspended, generation == connectionOperationGeneration,
+        selectedConnectionID == profileID,
+        connections.contains(where: { $0.id == profileID }),
+        backendSessionID(for: profileID) == previousSessionID
+      else {
+        await backend.disconnect(profileID: candidate.id)
+        return
+      }
+      apply(metadata, to: &candidate)
+      databaseWorkspaces[profileID, default: [:]][profile.database] = workspace(for: profileID)
+      var restored = databaseWorkspaces[profileID]?[candidate.database] ?? ConnectionWorkspace()
+      restored.schema = schema
+      restored.transactionState = nil
+      restored.privilegeBaseline = nil
+      restored.privilegeVerificationMessage = nil
+      connectionWorkspaces[profileID] = restored
+      activeDatabaseProfiles[profileID] = candidate
+      await assistant.shutdown()
+      await backend.disconnect(profileID: previousSessionID)
+    } catch {
+      await backend.disconnect(profileID: candidate.id)
+      if !areConnectionOperationsSuspended, generation == connectionOperationGeneration {
+        presentedError = error.localizedDescription
+      }
+    }
+  }
+
+  private func backendSessionID(for profileID: UUID) -> UUID {
+    activeDatabaseProfiles[profileID]?.id ?? profileID
+  }
+
+  private func profileForWorkspace(for profileID: UUID) -> ConnectionProfile? {
+    guard var profile = connections.first(where: { $0.id == profileID }) else { return nil }
+    if let active = activeDatabaseProfiles[profileID] {
+      profile.database = active.database
+      profile.latency = active.latency
+      profile.serverVersion = active.serverVersion
+      profile.serverEncoding = active.serverEncoding
+      profile.serverTimeZone = active.serverTimeZone
+    }
     return profile
   }
 
