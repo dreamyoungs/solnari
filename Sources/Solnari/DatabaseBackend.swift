@@ -55,6 +55,11 @@ actor DatabaseBackend {
       return metadata
     } catch {
       await transports.close(profileID: profile.id)
+      if profile.transport == .ssh, !(error is CancellationError) {
+        throw SolnariDatabaseError.transportFailed(
+          "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect."
+        )
+      }
       throw error
     }
   }
@@ -86,6 +91,11 @@ actor DatabaseBackend {
       return metadata
     } catch {
       await transports.close(profileID: profile.id)
+      if profile.transport == .ssh, !(error is CancellationError) {
+        throw SolnariDatabaseError.transportFailed(
+          "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect."
+        )
+      }
       throw error
     }
   }
@@ -145,7 +155,7 @@ actor DatabaseBackend {
     if connectedProfiles[profileID]?.transport == .cloudSQL {
       return try await nodeCloudSQL.loadSchema(profileID: profileID)
     }
-    return switch try engine(for: profileID) {
+    return switch try await engine(for: profileID) {
     case .postgresql: try await postgresql.loadSchema(profileID: profileID)
     case .mysql: try await mysql.loadSchema(profileID: profileID)
     case .sqlite: try await sqlite.loadSchema(profileID: profileID)
@@ -161,7 +171,7 @@ actor DatabaseBackend {
         object: object
       )
     }
-    return switch try engine(for: profileID) {
+    return switch try await engine(for: profileID) {
     case .postgresql:
       try await postgresql.loadSchemaObjectDetails(profileID: profileID, object: object)
     case .mysql:
@@ -184,15 +194,23 @@ actor DatabaseBackend {
     if profile.transport == .cloudSQL {
       return try await nodeCloudSQL.execute(profileID: profileID, sql: sql)
     }
-    switch try engine(for: profileID) {
-    case .postgresql: return try await postgresql.execute(profileID: profileID, sql: sql)
-    case .mysql: return try await mysql.execute(profileID: profileID, sql: sql)
-    case .sqlite: return try await sqlite.execute(profileID: profileID, sql: sql)
+    do {
+      switch try await engine(for: profileID) {
+      case .postgresql: return try await postgresql.execute(profileID: profileID, sql: sql)
+      case .mysql: return try await mysql.execute(profileID: profileID, sql: sql)
+      case .sqlite: return try await sqlite.execute(profileID: profileID, sql: sql)
+      }
+    } catch {
+      // 전송 중 끊겼다면 결과는 불확실합니다. 복구나 SQL 재실행은 시도하지 않습니다.
+      if profile.transport == .ssh {
+        _ = try await engine(for: profileID)
+      }
+      throw error
     }
   }
 
   func explain(profileID: UUID, sql: String) async throws -> QueryExecutionResult {
-    let statement = try QueryPlanBuilder.statement(sql: sql, engine: engine(for: profileID))
+    let statement = try QueryPlanBuilder.statement(sql: sql, engine: await engine(for: profileID))
     return try await QueryPlanExecution.run(
       operation: { try await self.execute(profileID: profileID, sql: statement) },
       cancel: { await self.disconnect(profileID: profileID) }
@@ -219,7 +237,14 @@ actor DatabaseBackend {
     }
   }
 
-  private func engine(for profileID: UUID) throws -> DatabaseEngine {
+  private func engine(for profileID: UUID) async throws -> DatabaseEngine {
+    if connectedProfiles[profileID]?.transport == .ssh,
+      !(await transports.isRunning(profileID: profileID))
+    {
+      throw SolnariDatabaseError.transportFailed(
+        "SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically."
+      )
+    }
     guard let engine = connectedEngines[profileID] else {
       throw SolnariDatabaseError.notConnected
     }

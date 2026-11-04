@@ -442,6 +442,31 @@ struct NewConnectionView: View {
         labeledField("SSH port", placeholder: "22", text: $draft.sshPort, width: 110)
         labeledField("SSH user", placeholder: "ubuntu", text: $draft.sshUser)
       }
+      VStack(alignment: .leading, spacing: 7) {
+        fieldLabel("SSH private key (optional)")
+        HStack {
+          TextField(
+            settings.text("Use SSH config or agent"), text: singleLine($draft.sshIdentityFile)
+          )
+          .textFieldStyle(.roundedBorder)
+          Button(settings.text("Choose key…")) { chooseSSHIdentityFile() }
+          if !draft.sshIdentityFile.isEmpty {
+            Button(settings.text("Clear")) { draft.sshIdentityFile = "" }
+          }
+        }
+        Text(
+          settings.text(
+            "Only the file path is saved. Encrypted keys must be unlocked in your SSH agent. Host identity verification stays enabled."
+          )
+        )
+        .font(.caption2).foregroundStyle(.secondary)
+        Text(
+          settings.text(
+            "Database host and port are reached from the SSH server. For a database on that server, use 127.0.0.1 and its actual database port."
+          )
+        )
+        .font(.caption2).foregroundStyle(.secondary)
+      }
       databaseCredentialFields
       passwordField
       HStack {
@@ -1241,6 +1266,19 @@ struct NewConnectionView: View {
     if current.isEmpty || draft.user == autoFilledIAMUsername {
       draft.user = candidate.name
       autoFilledIAMUsername = candidate.name
+    }
+  }
+
+  private func chooseSSHIdentityFile() {
+    let panel = NSOpenPanel()
+    panel.title = settings.text("Choose SSH private key")
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.showsHiddenFiles = true
+    panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+      ".ssh")
+    if panel.runModal() == .OK, let url = panel.url {
+      draft.sshIdentityFile = url.path
     }
   }
 

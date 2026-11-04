@@ -160,7 +160,11 @@ struct WorkspaceView: View {
       }
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)
-      .help(settings.text("Reconnect"))
+      .help(
+        settings.text(
+          model.selectedConnection?.transport == .ssh
+            ? "Reconnect SSH tunnel and database session" : "Reconnect")
+      )
       .disabled(model.isConnecting || model.isRunning || model.selectedConnectionID == nil)
 
       Button {

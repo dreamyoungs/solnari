@@ -146,6 +146,8 @@ struct SSHConfiguration: Hashable, Codable, Sendable {
   var host: String
   var port: Int
   var username: String
+  // 개인 키 내용은 저장하지 않고 이 Mac의 파일 경로만 참조합니다.
+  var identityFile: String? = nil
 }
 
 enum KubernetesConnectionMode: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
@@ -614,6 +616,7 @@ struct ConnectionDraft: Equatable, Sendable {
   var sshHost = ""
   var sshPort = "22"
   var sshUser = ""
+  var sshIdentityFile = ""
   var usePersonalIAM = false
   var kubeContext = ""
   var namespace = "default"
@@ -650,6 +653,7 @@ struct ConnectionDraft: Equatable, Sendable {
       sshHost = ssh.host
       sshPort = String(ssh.port)
       sshUser = ssh.username
+      sshIdentityFile = ssh.identityFile ?? ""
     }
     if let kubernetes = profile.kubernetes {
       usePersonalIAM = kubernetes.usePersonalIAM ?? false
@@ -791,7 +795,8 @@ struct ConnectionDraft: Equatable, Sendable {
         ? SSHConfiguration(
           host: sshHost.trimmed,
           port: Int(sshPort) ?? 22,
-          username: sshUser.trimmed
+          username: sshUser.trimmed,
+          identityFile: sshIdentityFile.trimmed.isEmpty ? nil : sshIdentityFile.trimmed
         ) : nil,
       kubernetes: transport == .kubernetes
         ? KubernetesConfiguration(

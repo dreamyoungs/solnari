@@ -180,3 +180,22 @@
 "Switch database after queries and transactions finish." = "Switch database after queries and transactions finish.";
 "Open another database using this connection's login and network settings." = "Open another database using this connection's login and network settings.";
 "Opening the database timed out. The previous database is still selected." = "Opening the database timed out. The previous database is still selected.";
+
+// SSH 키 선택 및 연결 복구
+"SSH private key (optional)" = "SSH private key (optional)";
+"Use SSH config or agent" = "Use SSH config or agent";
+"Choose key…" = "Choose key…";
+"Choose SSH private key" = "Choose SSH private key";
+"Only the file path is saved. Encrypted keys must be unlocked in your SSH agent. Host identity verification stays enabled." = "Only the file path is saved. Encrypted keys must be unlocked in your SSH agent. Host identity verification stays enabled.";
+"Database host and port are reached from the SSH server. For a database on that server, use 127.0.0.1 and its actual database port." = "Database host and port are reached from the SSH server. For a database on that server, use 127.0.0.1 and its actual database port.";
+"SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect." = "SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect.";
+"The connection path failed: SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect." = "The connection path failed: SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect.";
+"SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect." = "SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect.";
+"The connection path failed: SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect." = "The connection path failed: SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect.";
+"SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect." = "SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect.";
+"The connection path failed: SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect." = "The connection path failed: SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect.";
+"SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically." = "SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically.";
+"The connection path failed: SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically." = "The connection path failed: SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically.";
+"Reconnect SSH tunnel and database session" = "Reconnect SSH tunnel and database session";
+"SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect.";
+"The connection path failed: SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "The connection path failed: SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect.";

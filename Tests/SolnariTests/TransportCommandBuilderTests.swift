@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import Solnari
@@ -15,6 +16,52 @@ struct TransportCommandBuilderTests {
     #expect(command.arguments.contains("127.0.0.1:15002:database.private:5432"))
     #expect(command.arguments.contains("ubuntu@bastion.example.com"))
     #expect(!command.arguments.contains("database_user@bastion.example.com"))
+  }
+
+  @Test("전용 키는 별도 인자로 전달하고 호스트 검증과 앱 소유 터널을 유지한다")
+  func explicitSSHIdentityAndSecurity() throws {
+    let profile = networkProfile(
+      transport: .ssh,
+      ssh: SSHConfiguration(
+        host: "bastion.example.test", port: 22, username: "developer",
+        identityFile: "/tmp/key with spaces")
+    )
+    let arguments = try TransportCommandBuilder.ssh(
+      executable: "/usr/bin/ssh", profile: profile, localPort: 15002
+    ).arguments
+    #expect(arguments.starts(with: ["-i", "/tmp/key with spaces", "-o", "IdentitiesOnly=yes"]))
+    for option in [
+      "StrictHostKeyChecking=yes", "BatchMode=yes", "ExitOnForwardFailure=yes",
+      "ServerAliveCountMax=3", "ConnectTimeout=10", "ControlPath=none",
+    ] {
+      #expect(arguments.contains(option))
+    }
+    #expect(arguments.suffix(2) == ["--", "developer@bastion.example.test"])
+  }
+
+  @Test("기존 SSH 프로필은 키 없이 읽히고 선택한 키 경로는 편집 후 보존된다")
+  func sshIdentityCompatibility() throws {
+    let old = Data(#"{"host":"server","port":22,"username":"developer"}"#.utf8)
+    #expect(try JSONDecoder().decode(SSHConfiguration.self, from: old).identityFile == nil)
+    var draft = ConnectionDraft(
+      profile: networkProfile(
+        transport: .ssh,
+        ssh: SSHConfiguration(host: "server", port: 22, username: "developer")))
+    draft.sshIdentityFile = "/tmp/private key"
+    let profile = try draft.makeProfile()
+    #expect(profile.ssh?.identityFile == "/tmp/private key")
+    #expect(ConnectionDraft(profile: profile).sshIdentityFile == "/tmp/private key")
+  }
+
+  @Test("SSH 실패는 비밀 진단을 노출하지 않고 복구 방법을 안내한다")
+  func sshFailures() {
+    #expect(
+      ConnectionTransportManager.sshFailureMessage("Host key verification failed").contains(
+        "fingerprint"))
+    #expect(
+      ConnectionTransportManager.sshFailureMessage("Permission denied secret").contains(
+        "authentication failed"))
+    #expect(!ConnectionTransportManager.sshFailureMessage("arbitrary secret").contains("secret"))
   }
 
   @Test("Kubernetes 릴레이는 컨텍스트와 네임스페이스를 모든 명령에 명시한다")

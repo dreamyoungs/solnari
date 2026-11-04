@@ -18,16 +18,28 @@ enum TransportCommandBuilder {
     guard let configuration = profile.ssh else {
       throw SolnariDatabaseError.incompleteConnection
     }
+    var identityArguments: [String] = []
+    if let path = configuration.identityFile, !path.isEmpty {
+      identityArguments = [
+        "-i", NSString(string: path).expandingTildeInPath,
+        "-o", "IdentitiesOnly=yes",
+      ]
+    }
     return TransportCommand(
       executable: executable,
-      arguments: [
+      arguments: identityArguments + [
         "-N", "-T",
         "-o", "BatchMode=yes",
         "-o", "ExitOnForwardFailure=yes",
-        "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveInterval=15",
+        "-o", "ServerAliveCountMax=3",
+        "-o", "ConnectTimeout=10",
+        "-o", "StrictHostKeyChecking=yes",
+        "-o", "ControlMaster=no",
+        "-o", "ControlPath=none",
         "-p", String(configuration.port),
         "-L", "127.0.0.1:\(localPort):\(profile.host):\(profile.port)",
-        "\(configuration.username)@\(configuration.host)",
+        "--", "\(configuration.username)@\(configuration.host)",
       ]
     )
   }
@@ -167,6 +179,11 @@ actor ConnectionTransportManager {
     case .kubernetes:
       return try await openKubernetes(profile)
     }
+  }
+
+  func isRunning(profileID: UUID) -> Bool {
+    guard let session = sessions[profileID], !session.processes.isEmpty else { return false }
+    return session.processes.allSatisfy(\.isRunning)
   }
 
   func close(profileID: UUID) async {
@@ -359,19 +376,38 @@ actor ConnectionTransportManager {
 
   private func waitUntilListening(port: Int, process: Process) async throws {
     for _ in 0..<150 {
-      if Self.isPortInUse(port) { return }
+      try Task.checkCancellation()
+      if process.isRunning, Self.isPortInUse(port) { return }
       if !process.isRunning {
         let pipe = process.standardError as? Pipe
         let data = pipe?.fileHandleForReading.readDataToEndOfFile() ?? Data()
         let message = String(decoding: data.prefix(8_192), as: UTF8.self)
           .trimmingCharacters(in: .whitespacesAndNewlines)
         throw SolnariDatabaseError.transportFailed(
-          message.isEmpty ? "The helper process exited unexpectedly." : message
+          process.executableURL?.lastPathComponent == "ssh"
+            ? Self.sshFailureMessage(message)
+            : (message.isEmpty ? "The helper process exited unexpectedly." : message)
         )
       }
       try await Task.sleep(for: .milliseconds(100))
     }
     throw SolnariDatabaseError.transportTimedOut
+  }
+
+  static func sshFailureMessage(_ diagnostic: String) -> String {
+    if diagnostic.contains("Host key verification failed")
+      || diagnostic.contains("REMOTE HOST IDENTIFICATION HAS CHANGED")
+    {
+      return
+        "SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect."
+    }
+    if diagnostic.contains("Permission denied") || diagnostic.contains("identity file")
+      || diagnostic.contains("Load key")
+    {
+      return
+        "SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect."
+    }
+    return "SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect."
   }
 
   private static func availablePort() throws -> Int {

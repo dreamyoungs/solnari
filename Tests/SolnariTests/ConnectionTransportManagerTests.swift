@@ -26,6 +26,18 @@ struct ConnectionTransportManagerTests {
       ssh: SSHConfiguration(host: "bastion", port: 22, username: "ubuntu")
     )
     _ = try await manager.open(profile: ssh)
+    #expect(await manager.isRunning(profileID: ssh.id))
+    let pidText = try String(contentsOfFile: executable.path + ".pid", encoding: .utf8)
+    let pid = try #require(Int32(pidText))
+    #expect(Darwin.kill(pid, SIGTERM) == 0)
+    for _ in 0..<50 {
+      if !(await manager.isRunning(profileID: ssh.id)) { break }
+      try await Task.sleep(for: .milliseconds(20))
+    }
+    #expect(!(await manager.isRunning(profileID: ssh.id)))
+    await manager.close(profileID: ssh.id)
+    _ = try await manager.open(profile: ssh)
+    #expect(await manager.isRunning(profileID: ssh.id))
     await manager.close(profileID: ssh.id)
 
     let configuration = KubernetesConfiguration(
@@ -58,6 +70,43 @@ struct ConnectionTransportManagerTests {
     #expect(log.contains("--address=127.0.0.1"))
   }
 
+  @Test(
+    "설정된 개발 SSH 경로로 PostgreSQL 준비 상태를 확인한다",
+    .enabled(
+      if: ProcessInfo.processInfo.environment["SOLNARI_TEST_SSH_HOST"] != nil,
+      "SOLNARI_TEST_SSH_HOST를 설정하면 실행됩니다."))
+  func developmentSSHDatabaseReadiness() async throws {
+    let env = ProcessInfo.processInfo.environment
+    let host = try #require(env["SOLNARI_TEST_SSH_HOST"])
+    let user = try #require(env["SOLNARI_TEST_SSH_USER"])
+    let probePath = try #require(env["SOLNARI_TEST_PG_ISREADY"])
+    var connection = profile(
+      transport: .ssh,
+      ssh: SSHConfiguration(
+        host: host, port: 22, username: user,
+        identityFile: env["SOLNARI_TEST_SSH_KEY"]))
+    connection.host = "127.0.0.1"
+    connection.port = Int(env["SOLNARI_TEST_SSH_DB_PORT"] ?? "5432") ?? 5432
+    let manager = ConnectionTransportManager()
+    do {
+      let endpoint = try await manager.open(profile: connection)
+      #expect(endpoint.host == "127.0.0.1")
+      let probe = Process()
+      probe.executableURL = URL(fileURLWithPath: probePath)
+      probe.arguments = ["-h", endpoint.host, "-p", String(endpoint.port), "-t", "3"]
+      probe.standardOutput = FileHandle.nullDevice
+      probe.standardError = FileHandle.nullDevice
+      try probe.run()
+      probe.waitUntilExit()
+      #expect(probe.terminationStatus == 0)
+      await manager.close(profileID: connection.id)
+      #expect(!(await manager.isRunning(profileID: connection.id)))
+    } catch {
+      await manager.close(profileID: connection.id)
+      throw error
+    }
+  }
+
   private func profile(
     transport: ConnectionTransport,
     cloudSQL: CloudSQLConfiguration? = nil,
@@ -83,8 +132,12 @@ struct ConnectionTransportManagerTests {
   private var fakeTransportScript: String {
     """
     #!/usr/bin/python3
+    import os
     import socket
     import sys
+
+    with open(sys.argv[0] + ".pid", "w") as pid_file:
+        pid_file.write(str(os.getpid()))
 
     args = sys.argv[1:]
     with open(sys.argv[0] + ".log", "a", encoding="utf-8") as log:

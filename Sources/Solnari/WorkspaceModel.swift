@@ -515,6 +515,7 @@ final class WorkspaceModel: ObservableObject {
       updateWorkspace(for: profileID) { $0.schema = loadedSchema }
       try profileStore.save(connections)
     } catch {
+      await backend.disconnect(profileID: backendSessionID(for: profileID))
       if let failedIndex = connections.firstIndex(where: { $0.id == profileID }) {
         connections[failedIndex].status =
           areConnectionOperationsSuspended ? .disconnected : .failed

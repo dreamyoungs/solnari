@@ -499,3 +499,22 @@
 "Switch database after queries and transactions finish." = "쿼리와 트랜잭션을 마친 뒤 데이터베이스를 전환할 수 있습니다.";
 "Open another database using this connection's login and network settings." = "현재 연결의 로그인과 네트워크 설정으로 다른 데이터베이스를 엽니다.";
 "Opening the database timed out. The previous database is still selected." = "데이터베이스 연결 시간이 초과되었습니다. 기존 데이터베이스를 유지합니다.";
+
+// SSH 키 선택 및 연결 복구
+"SSH private key (optional)" = "SSH 개인 키 (선택)";
+"Use SSH config or agent" = "SSH 설정 또는 에이전트 사용";
+"Choose key…" = "키 선택…";
+"Choose SSH private key" = "SSH 개인 키 선택";
+"Only the file path is saved. Encrypted keys must be unlocked in your SSH agent. Host identity verification stays enabled." = "키 파일의 경로만 저장합니다. 암호화된 키는 SSH 에이전트에서 잠금을 해제하세요. 서버 신원 검증은 계속 적용됩니다.";
+"Database host and port are reached from the SSH server. For a database on that server, use 127.0.0.1 and its actual database port." = "DB 호스트와 포트는 SSH 서버 기준입니다. 같은 서버의 DB라면 127.0.0.1과 DB의 실제 포트를 입력하세요.";
+"SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect." = "SSH 서버 신원을 확인하지 못했습니다. 터미널에서 서버 지문과 known_hosts 항목을 확인한 뒤 다시 연결하세요.";
+"The connection path failed: SSH host identity could not be verified. Verify the server fingerprint and known_hosts entry in Terminal, then reconnect." = "연결 경로 오류: SSH 서버 신원을 확인하지 못했습니다. 터미널에서 서버 지문과 known_hosts 항목을 확인한 뒤 다시 연결하세요.";
+"SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect." = "SSH 인증에 실패했습니다. 개인 키와 SSH 사용자를 확인하세요. 암호화된 키는 SSH 에이전트에서 잠금을 해제한 뒤 다시 연결하세요.";
+"The connection path failed: SSH authentication failed. Check the selected private key and SSH user. Unlock an encrypted key in your SSH agent, then reconnect." = "연결 경로 오류: SSH 인증에 실패했습니다. 개인 키와 SSH 사용자를 확인하세요. 암호화된 키는 SSH 에이전트에서 잠금을 해제한 뒤 다시 연결하세요.";
+"SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect." = "SSH 터널을 열지 못했습니다. SSH 호스트, 포트와 네트워크를 확인한 뒤 다시 연결하세요.";
+"The connection path failed: SSH tunnel could not be opened. Check the SSH host, port and network, then reconnect." = "연결 경로 오류: SSH 터널을 열지 못했습니다. SSH 호스트, 포트와 네트워크를 확인한 뒤 다시 연결하세요.";
+"SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically." = "SSH 터널이 끊겼습니다. 재연결하면 터널과 새 DB 세션을 생성합니다. 이전 쿼리나 트랜잭션의 결과가 불확실할 수 있으니 다시 실행하기 전에 확인하세요. SQL은 자동으로 재실행하지 않습니다.";
+"The connection path failed: SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically." = "연결 경로 오류: SSH 터널이 끊겼습니다. 재연결하면 터널과 새 DB 세션을 생성합니다. 이전 쿼리나 트랜잭션의 결과가 불확실할 수 있으니 다시 실행하기 전에 확인하세요. SQL은 자동으로 재실행하지 않습니다.";
+"Reconnect SSH tunnel and database session" = "SSH 터널과 DB 세션 다시 연결";
+"SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "SSH 터널은 열렸지만 DB 세션 연결에 실패했습니다. SSH 서버 기준 DB 호스트·포트, DB 인증 정보와 TLS 설정을 확인한 뒤 다시 연결하세요.";
+"The connection path failed: SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "연결 경로 오류: SSH 터널은 열렸지만 DB 세션 연결에 실패했습니다. SSH 서버 기준 DB 호스트·포트, DB 인증 정보와 TLS 설정을 확인한 뒤 다시 연결하세요.";
