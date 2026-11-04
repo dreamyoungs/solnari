@@ -182,6 +182,7 @@
 "Opening the database timed out. The previous database is still selected." = "Opening the database timed out. The previous database is still selected.";
 
 // SSH 키 선택 및 연결 복구
+"Clear" = "Clear";
 "SSH private key (optional)" = "SSH private key (optional)";
 "Use SSH config or agent" = "Use SSH config or agent";
 "Choose key…" = "Choose key…";

@@ -501,6 +501,7 @@
 "Opening the database timed out. The previous database is still selected." = "데이터베이스 연결 시간이 초과되었습니다. 기존 데이터베이스를 유지합니다.";
 
 // SSH 키 선택 및 연결 복구
+"Clear" = "선택 해제";
 "SSH private key (optional)" = "SSH 개인 키 (선택)";
 "Use SSH config or agent" = "SSH 설정 또는 에이전트 사용";
 "Choose key…" = "키 선택…";
