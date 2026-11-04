@@ -1,6 +1,6 @@
 # 외부 Agent용 MCP 접근
 
-Solnari는 로컬 Codex desktop app, CLI 또는 IDE extension이 현재 앱에서 선택한 database를
+Solnari는 로컬 Codex desktop app, CLI 또는 IDE extension이 앱에서 이미 연결한 database 중 대상을 지정해
 연결 권한에 따라 조회·변경할 수 있는 STDIO MCP server를 제공합니다. 앱 내부 Codex SQL 어시스턴트와는
 별개의 기능입니다.
 
@@ -17,7 +17,7 @@ Codex desktop / CLI / IDE
   → bundled Node 24 STDIO MCP server
   → ~/Library/Application Support/Solnari/mcp.sock
   → running Solnari app
-  → currently selected database session
+  → explicitly requested connected database session
 ```
 
 MCP process는 database profile이나 credential vault를 직접 읽지 않습니다. Solnari app이 연결,
@@ -26,12 +26,15 @@ socket으로 정형화된 요청만 전달합니다.
 
 ## 활성화와 등록
 
-1. Solnari의 `설정 → MCP 접근`을 엽니다.
-2. `로컬 MCP 접근 허용`을 켭니다.
-3. 표시되는 `Codex 등록 명령 복사`를 누릅니다.
-4. 복사한 `codex mcp add solnari -- ...` 명령을 Terminal에서 한 번 실행합니다.
-5. Codex desktop app, CLI 또는 IDE extension을 재시작합니다.
-6. Codex에서 `/mcp` 또는 MCP server 설정을 열어 `solnari` 연결을 확인합니다.
+1. 개발·운영 등 사용할 DB를 Solnari에서 연결합니다.
+2. `설정 → MCP 접근 → Codex에 연결`을 누릅니다. 등록에 성공하면 로컬 MCP 접근도 켜집니다.
+3. Codex를 재시작합니다.
+4. `solnari_list_connections`로 연결된 DB 목록을 조회하고, 사용할 DB의 `connectionID`를 각 스키마·쿼리 도구에 전달합니다.
+
+등록 버튼은 설치된 Codex 앱의 내장 실행 파일 또는 CLI로 `codex mcp add`를 실행합니다.
+Node와 MCP 서버는 Solnari 앱에 포함되어 별도 설치가 필요 없습니다. Codex 설정의 다른 항목은
+Codex의 공식 등록 명령이 보존합니다. 기존 `solnari` 등록은 현재 앱 경로로 갱신됩니다.
+수동 등록을 원하면 로컬 MCP 접근을 켜고 기존 `Codex 등록 명령 복사`를 사용할 수 있습니다.
 
 등록 명령은 설치된 app 내부의 bundled Node runtime과 MCP entrypoint를 절대 경로로 지정합니다.
 비밀번호, token 또는 database 정보는 명령 인자나 환경 변수에 포함하지 않습니다.
@@ -41,8 +44,9 @@ socket으로 정형화된 요청만 전달합니다.
 | 도구 | 동작 |
 | --- | --- |
 | `solnari_status` | 실행 중인 Solnari MCP bridge 상태 확인 |
+| `solnari_list_connections` | 현재 연결된 DB의 정제된 metadata와 session ID 목록 |
 | `solnari_get_active_connection` | 현재 선택한 연결의 정제된 metadata 확인 |
-| `solnari_list_schema` | 현재 연결의 table, view, materialized view와 function 목록 |
+| `solnari_list_schema` | 지정한 연결의 table, view, materialized view와 function 목록 |
 | `solnari_describe_object` | column, index, constraint, comment와 definition 조회 |
 | `solnari_execute_read_query` | 읽기 전용 profile에서 단일 read query 실행 |
 | `solnari_execute_query` | 쓰기 허용 profile에서 조회·변경 SQL 실행 |
@@ -53,17 +57,39 @@ socket으로 정형화된 요청만 전달합니다.
 
 - MCP 접근이 켜져 있음
 - Mac이 잠금·절전 상태가 아님
-- 앱에서 선택한 profile이 이미 연결됨
-- 다른 쿼리나 실행 계획이 실행 중이지 않음
+- 요청한 session ID에 해당하는 profile이 이미 연결됨
+- 해당 연결의 MCP 동시 실행 한도에 여유가 있음
 - profile의 표시 권한과 실제 연결된 DB session의 권한이 도구의 요구 권한과 일치함
 
 `solnari_execute_read_query`는 `Read-only` 연결에서 기존 SQL 사전 검사와 DB session의 쓰기
 차단을 적용합니다. `solnari_execute_query`는 `Read / Write` 연결에서만 실행되며, 쓰기 허용
 연결의 SELECT 조회에도 이 도구를 사용합니다. `Migration` 권한은 허용하지 않습니다.
 
-쓰기 실행 전 `solnari_get_active_connection`의 `connectionID`를 가져와 요청에 포함해야 합니다.
-사용자가 그 사이 다른 연결을 선택하면 거부됩니다. 접근 권한을 변경할 때는 연결 편집에서
-저장·재연결해야 하며, 화면의 값만 바뀌어도 이전 읽기 전용 세션의 권한이 상승하지 않습니다.
+스키마·객체 조회와 두 쿼리 실행 도구는 모두 `solnari_list_connections`에서 얻은 `connectionID`가
+필수입니다. 앱의 화면 선택이나 다른 MCP 클라이언트의 요청은 실행 대상을 바꾸지 않습니다.
+연결이 끊겼거나 DB 전환으로 session ID가 바뀌면 이전 ID는 거절합니다. MCP가 DB를 자동으로
+연결하거나 다른 DB로 대체하지 않습니다.
+
+### 연결별 MCP 동시 실행 수
+
+`연결 설정 → Safety & access → MCP 동시 실행 수`에서 연결별로 1~10개를 지정합니다.
+기본값은 3개이며, 기존 저장 연결도 설정이 없으면 3개로 동작합니다. 저장·재연결 시 적용되고
+프로필 내보내기·가져오기에도 포함됩니다. `solnari_list_connections`의 `mcpMaxConcurrentQueries`로
+설정된 한도를 확인할 수 있습니다.
+
+스키마·객체 조회와 쿼리는 요청마다 별도 DB 세션을 열고 완료·실패 시 닫습니다. 세션을 미리
+열어 두지 않으며, 앱의 직접 실행용 세션과 SSH·Kubernetes 터널은 유지합니다. 새 세션의 인증·
+연결 비용은 각 요청에 포함됩니다. 같은 DB에서도 설정한 개수까지 동시에 요청할 수 있고,
+한도가 찼으면 대기열 없이 `MCP_SESSION_LIMIT_REACHED`로 거절합니다. 서로 다른 연결의 한도는
+독립적이며, SQLite 쓰기 잠금 등 DB 자체의 동시 실행 제한은 그대로 적용됩니다.
+
+임시 테이블, 세션 설정, 트랜잭션은 다음 MCP 요청으로 이어지지 않습니다. 트랜잭션을 사용할
+때는 해당 엔진이 지원하는 한 번의 SQL 요청 안에서 완료해야 하며, 미완료 트랜잭션은 세션
+종료 시 롤백됩니다. 앱 세션에서 아직 커밋하지 않은 변경도 MCP 세션에 공유되지 않습니다.
+연결 해제·재연결·DB 전환·잠금 시에는 해당 연결의 MCP 전용 세션도 종료합니다.
+
+접근 권한 변경은 연결 편집에서 저장·재연결해야 하며, 화면의 값만 바뀌어도 이전 읽기 전용
+세션의 권한이 상승하지 않습니다.
 
 MCP 접근을 켜고 연결에서 쓰기를 허용하면 INSERT·UPDATE·DELETE·DDL이 DB 계정의 권한 범위에서
 즉시 실행됩니다. Solnari에 별도의 건별 승인창은 없으며 외부 MCP 클라이언트의 승인 정책은
@@ -78,7 +104,7 @@ PostgreSQL 실행 결과의 `report`에는 드라이버가 보고한 명령과 �
 트랜잭션 상태가 포함됩니다. 서버 notice와 원본 DB 오류는 앱에만 표시하며 MCP에는
 전달하지 않습니다. 접근 거부 응답의 `error` 구조에는 오류 코드, 현재 access level,
 요청한 작업, 사용할 도구 및 앱에서 검토·실행하는 다음 단계가 들어갑니다.
-`solnari_status`와 현재 연결 응답의 `executionTool`로 선택할 실행 도구를 확인할 수 있습니다.
+`solnari_list_connections` 응답의 연결별 `executionTool`로 선택할 실행 도구를 확인할 수 있습니다.
 쓰기 실행 결과가 2 MB를 넘으면 이미 완료된 변경을 실패로 표시하지 않고, 결과 데이터를
 생략한 `truncated: true` 성공 응답을 반환합니다.
 
@@ -90,9 +116,9 @@ MCP 응답에는 다음 항목을 넣지 않습니다.
 - hostname, port와 username
 - Cloud project, region, instance와 IAM principal
 - SSH bastion, kube context, namespace와 relay 설정
-- 다른 저장 연결 또는 현재 선택하지 않은 database의 schema
+- 연결되지 않은 저장 profile 또는 해당 session에서 제공하지 않는 database의 schema
 
-현재 연결 이름, engine, database 이름, access level, server version·encoding·time zone, schema와
+연결된 DB의 이름, engine, database 이름, access level, server version·encoding·time zone, schema와
 사용자가 요청한 query 결과는 MCP 기능의 목적상 외부 Agent context에 포함될 수 있습니다.
 
 ## lifecycle과 한계
@@ -100,7 +126,7 @@ MCP 응답에는 다음 항목을 넣지 않습니다.
 - 새 설치에서는 MCP가 꺼져 있습니다.
 - Solnari가 실행 중일 때만 socket이 존재합니다.
 - socket과 상위 directory는 현재 macOS 사용자만 접근할 수 있습니다.
-- 화면 잠금, 절전, 사용자 session 전환과 앱 종료 시 socket을 닫습니다.
+- 화면 잠금, Mac·디스플레이 절전, 사용자 session 전환과 앱 종료 시 socket과 모든 DB 연결을 닫습니다. 복귀 시 MCP 접근은 재개되지만 DB는 자동 재연결하지 않습니다.
 - MCP server는 외부 process를 실행하지 않으며 `gcloud`나 proxy fallback을 추가하지 않습니다.
 - 같은 macOS 사용자 권한을 탈취한 악성 process까지 격리하는 보안 경계는 아닙니다.
 - SQL lexer는 완전한 dialect parser가 아니므로 DB role도 필요한 최소 권한으로 구성해야 합니다.

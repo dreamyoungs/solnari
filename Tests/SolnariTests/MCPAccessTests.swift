@@ -5,6 +5,60 @@ import Testing
 
 @MainActor
 struct MCPAccessTests {
+  @Test("MCP는 화면 선택과 독립적으로 연결된 DB를 지정하고 미연결 대상을 거부한다")
+  func routesConnectedDatabasesWithoutChangingSelection() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("SolnariMCPRouting-\(UUID())")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let profiles = ["Development", "Production", "Offline"].map { name in
+      ConnectionProfile(
+        name: name, database: directory.appendingPathComponent("\(name).sqlite").path,
+        engine: .sqlite, transport: .direct, host: "", port: 0, username: "",
+        requiresTLS: false, clientEncoding: "Automatic", accessLevel: .readWrite)
+    }
+    let suite = "SolnariMCPRouting.\(UUID())"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let store = ConnectionProfileStore(defaults: defaults)
+    try store.save(profiles)
+    let workspace = WorkspaceModel(
+      backend: DatabaseBackend(), profileStore: store,
+      passwordStore: LocalEncryptedPasswordStore(
+        directoryURL: directory.appendingPathComponent("vault")))
+    for profile in profiles.prefix(2) { await workspace.connect(profileID: profile.id) }
+    workspace.selectedConnectionID = profiles[0].id
+    #expect(workspace.mcpConnectedProfiles().map(\.id) == Array(profiles.prefix(2)).map(\.id))
+    for profile in profiles.prefix(2) {
+      _ = try await workspace.mcpExecuteQuery(
+        connectionID: profile.id, sql: "CREATE TABLE \(profile.name) (id INTEGER)", maximumRows: 1)
+      let schema = try await workspace.mcpSchemaSnapshot(connectionID: profile.id)
+      #expect(schema.contains { $0.name == profile.name })
+      #expect(!schema.contains { $0.name == profiles.first { $0.id != profile.id }?.name })
+    }
+    let targetID = profiles[0].id
+    async let first = workspace.mcpExecuteQuery(
+      connectionID: targetID, sql: "SELECT 'parallel' AS marker", maximumRows: 1)
+    async let second = workspace.mcpExecuteQuery(
+      connectionID: targetID, sql: "SELECT 'parallel' AS marker", maximumRows: 1)
+    async let third = workspace.mcpExecuteQuery(
+      connectionID: targetID, sql: "SELECT 'parallel' AS marker", maximumRows: 1)
+    let concurrent = try await [first, second, third]
+    #expect(concurrent.count == 3)
+    #expect(concurrent.allSatisfy { $0.rows.first?.first?.value == "parallel" })
+    #expect(!workspace.isRunning)
+    #expect(workspace.selectedConnectionID == profiles[0].id)
+    await #expect(throws: MCPAccessError.self) {
+      try await workspace.mcpExecuteQuery(
+        connectionID: profiles[2].id, sql: "SELECT 1", maximumRows: 1)
+    }
+    await workspace.suspendConnections()
+    #expect(workspace.mcpConnectedProfiles().isEmpty)
+    await #expect(throws: MCPAccessError.self) {
+      try await workspace.mcpSchemaSnapshot(connectionID: profiles[1].id)
+    }
+  }
+
   @Test("MCP cell은 UTF-8 경계를 보존하며 16 KiB로 제한한다")
   func boundsLargeUTF8Cells() {
     let cell = MCPQueryCell(.text(String(repeating: "가", count: 6_000)))
@@ -92,6 +146,13 @@ struct MCPAccessTests {
       sql: "SELECT title FROM notes", maximumRows: 10)
     #expect(unchanged.rows.first?.first?.value == "updated")
     workspace.selectedConnectionID = profile.id
+    let explicitRead = try await workspace.mcpExecuteReadOnlyQuery(
+      connectionID: readOnly.id, sql: "SELECT title FROM notes", maximumRows: 10)
+    #expect(explicitRead.rows.first?.first?.value == "updated")
+    let details = try await workspace.mcpDescribeObject(
+      connectionID: readOnly.id, schema: "main", name: "notes", kind: .table)
+    #expect(!details.columns.isEmpty)
+    #expect(workspace.selectedConnectionID == profile.id)
     let writableIndex = try #require(workspace.connections.firstIndex { $0.id == profile.id })
     workspace.connections[writableIndex].accessLevel = .readOnly
     await #expect(throws: MCPAccessError.self) {

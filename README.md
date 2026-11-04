@@ -20,8 +20,8 @@
 </p>
 
 > [!NOTE]
-> 현재 버전은 **0.6.1 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
-> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.6.1). Apple
+> 현재 버전은 **0.7.0 Apple Silicon preview**입니다. [GitHub Releases에서 unsigned DMG를
+> 받을 수 있습니다](https://github.com/dreamyoungs/solnari/releases/tag/v0.7.0). Apple
 > Developer Program 가입 전까지는 Developer ID 서명·notarization되지 않으므로 최초 실행 시
 > 아래의 macOS 보안 승인 절차가 필요합니다.
 
@@ -75,7 +75,7 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - 한국어·영어 런타임 전환과 macOS light/dark appearance
 - 앱 중복 실행 방지와 종료·잠금·절전·사용자 전환 시 연결 세션 정리
 - 읽기 전용 profile의 보수적인 SQL 사전 검사와 DB session 쓰기 차단
-- 현재 선택한 연결의 metadata·schema와 연결 권한에 따른 조회·쓰기 query tool을 외부 Codex에 제공하는 opt-in local MCP server
+- 현재 연결된 DB를 지정하여 metadata·schema와 연결 권한에 따른 조회·쓰기 query tool을 외부 Codex에 제공하는 opt-in local MCP server
 - [안전한 실행 계획 조회](docs/query-plans.md) 및 원본 SQL 보존
 - [스키마 미리보기·고정 탭](docs/schema-tabs.md)
 - [DB 문법별 로컬 SQL 정렬](docs/sql-formatting.md), 선택 복원 및 실행 취소
@@ -135,8 +135,8 @@ Local Codex → bundled Node MCP STDIO server → user-only local socket → Swi
 ```
 
 Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리에서 실행되며 모든
-`node:child_process` API를 차단합니다. 외부 Codex용 MCP는 기본적으로 꺼져 있고 현재 선택한
-연결만 보며, credential·host·Cloud project 식별자를 반환하지 않습니다. Cloud SQL 경로가
+`node:child_process` API를 차단합니다. 외부 Codex용 MCP는 기본적으로 꺼져 있고 이미 연결된
+DB만 보며, credential·host·Cloud project 식별자를 반환하지 않습니다. Cloud SQL 경로가
 `gcloud`나 외부 Proxy로 자동 우회하지 않도록 이 경계를 테스트합니다.
 
 ## 아직 구현 중입니다
@@ -156,8 +156,8 @@ Node Core는 정제된 환경과 전용 Application Support 작업 디렉터리�
 
 ### Apple Silicon용 DMG로 설치하기
 
-[Solnari 0.6.1 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.6.1)에서
-`Solnari-0.6.1-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
+[Solnari 0.7.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.7.0)에서
+`Solnari-0.7.0-macos-arm64-unsigned.dmg`를 내려받습니다. 현재 DMG는 Apple Developer
 Program에 가입하지 않고 만든 무료 오픈소스 preview라서 ad-hoc 서명되어 있고 Apple의
 notarization을 받지 않았습니다. Apple Silicon Mac에서 다음 순서로 최초 실행을 승인합니다.
 
@@ -248,7 +248,7 @@ Apple Developer Program 가입 없이 테스트용 DMG를 만들 수 있습니�
 ./Scripts/package-local-dmg.sh
 ```
 
-결과는 `.build/release/Solnari-0.6.1-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
+결과는 `.build/release/Solnari-0.7.0-macos-arm64-unsigned.dmg`와 SHA-256 파일입니다. 이 DMG는
 GitHub Release의 preview와 동일하게 ad-hoc 서명 앱을 포함하며 notarization되지 않았습니다.
 생성 스크립트는 660×400 Finder 창, 앱과 응용 프로그램 바로가기의 고정 위치, Retina 배경,
 전용 볼륨 아이콘을 적용하고, 패키지 내용과 마운트·해제를 자동 검증합니다.
@@ -276,7 +276,7 @@ export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
 ./Scripts/package-release.sh
 ```
 
-결과는 `.build/release/Solnari-0.6.1-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
+결과는 `.build/release/Solnari-0.7.0-macos-arm64.dmg`와 SHA-256 파일입니다. 앱과 DMG를
 Developer ID로 서명하고 DMG를 notarization한 뒤 ticket을 staple합니다. 가입 전에는 이
 script의 인증서·notary 사전 검사를 통과할 수 없습니다.
 
@@ -291,10 +291,11 @@ notarization을 적용합니다.
 
 ### 외부 Codex에서 연결하기
 
-앱의 `설정 → MCP 접근`에서 local MCP를 켜고 표시되는 Codex 등록 명령을 한 번 실행합니다.
-그 뒤 Codex를 재시작하면 현재 Solnari에서 선택한 연결의 정제된 metadata·schema와
+앱의 `설정 → MCP 접근 → Codex에 연결`을 누르면 별도 CLI 설치 없이 MCP를 등록합니다.
+그 뒤 Codex를 재시작하고 `solnari_list_connections`에서 연결된 DB를 선택하면 정제된 metadata·schema와
 query 도구를 사용할 수 있습니다. MCP는 새 설치에서 꺼져 있고, 이미 연결된 profile의 권한을
-따릅니다. `Read-only`는 조회만, `Read / Write`는 조회·변경 SQL 실행을 허용합니다. 자세한 범위와 제한은
+따릅니다. 연결 설정의 `MCP 동시 실행 수`는 기본 3개(1~10개)이며, 요청별 전용 세션을 사용합니다.
+`Read-only`는 조회만, `Read / Write`는 조회·변경 SQL 실행을 허용합니다. 자세한 범위와 제한은
 [외부 Agent용 MCP 접근](docs/mcp-access.ko.md)을 확인해 주세요.
 
 ## 검증

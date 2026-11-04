@@ -5,6 +5,37 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.7.0 Apple Silicon preview] - 2026-11-04
+
+### Added
+
+- Let MCP clients list already connected databases and pass an explicit connection ID to every
+  schema and query tool, independently of the workspace selection.
+- Register Solnari MCP from Settings using the installed Codex app or CLI, without a separate
+  Node or MCP installation. Existing manual registration remains available.
+- Configure MCP concurrency per connection: default 3, range 1–10, applied after saving and
+  reconnecting. Preserve the value in saved, duplicated, imported, and exported profiles.
+
+### Improved
+
+- Open a dedicated database session on demand for each MCP request and close it afterward.
+  App sessions stay independent; SSH and Kubernetes tunnels remain app-owned and shared.
+- Count sessions that are opening or closing toward the connection limit; reject excess
+  requests with `MCP_SESSION_LIMIT_REACHED` without queuing or replaying SQL.
+- Close child sessions when their parent connection is closed, reconnected, switched, or suspended.
+  Temporary objects, session settings, and unfinished transactions do not carry across requests.
+- Preserve 0.6.1 SSH failure detection and manual reconnect behavior on MCP session failures.
+
+### Verification and limitations
+
+- SQLite and isolated local PostgreSQL tests verify three independent MCP sessions plus the app
+  session, per-connection limits, slot recovery, permission enforcement, and database switching.
+- Registration was checked against an isolated Codex configuration; unrelated MCP entries remain
+  intact and repeat registration updates Solnari without duplicates.
+- Live MySQL, Cloud SQL, SSH, and Kubernetes MCP concurrency were not tested. New connection and
+  authentication costs apply to each request; database locking rules still apply. Transactions
+  must complete within one supported SQL request. This preview is ad-hoc signed and not notarized.
+
 ## [0.6.1 Apple Silicon preview] - 2026-11-04
 
 ### Improved

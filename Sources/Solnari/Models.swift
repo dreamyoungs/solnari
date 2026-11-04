@@ -231,6 +231,15 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
   var auditTextSettings: Bool?
   var securityPolicy: ConnectionSecurityPolicy?
   var accessLevel: DatabaseAccessLevel?
+  var mcpMaxConcurrentQueries: Int?
+
+  static let mcpConcurrencyRange = 1...10
+
+  var effectiveMCPMaxConcurrentQueries: Int {
+    min(
+      max(mcpMaxConcurrentQueries ?? 3, Self.mcpConcurrencyRange.lowerBound),
+      Self.mcpConcurrencyRange.upperBound)
+  }
 
   var effectiveSecurityPolicy: ConnectionSecurityPolicy {
     securityPolicy ?? .localDevelopment
@@ -279,7 +288,8 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
     preferredCollation: String? = nil,
     auditTextSettings: Bool? = nil,
     securityPolicy: ConnectionSecurityPolicy? = nil,
-    accessLevel: DatabaseAccessLevel? = nil
+    accessLevel: DatabaseAccessLevel? = nil,
+    mcpMaxConcurrentQueries: Int? = nil
   ) {
     self.id = id
     self.name = name
@@ -304,6 +314,7 @@ struct ConnectionProfile: Identifiable, Hashable, Codable, Sendable {
     self.auditTextSettings = auditTextSettings
     self.securityPolicy = securityPolicy
     self.accessLevel = accessLevel
+    self.mcpMaxConcurrentQueries = mcpMaxConcurrentQueries
   }
 
   func persisted() -> ConnectionProfile {
@@ -572,6 +583,7 @@ enum ConnectionDraftValidationIssue: Hashable, Sendable {
   case tlsRequired
   case organizationManagedPolicy
   case migrationAccess
+  case mcpConcurrency
 
   var message: String {
     switch self {
@@ -596,6 +608,7 @@ enum ConnectionDraftValidationIssue: Hashable, Sendable {
     case .organizationManagedPolicy:
       "Organization-managed policy is not available in this build."
     case .migrationAccess: "Migration access is not available in this build."
+    case .mcpConcurrency: "MCP concurrent requests must be between 1 and 10."
     }
   }
 }
@@ -632,6 +645,7 @@ struct ConnectionDraft: Equatable, Sendable {
   var auditTextSettings = true
   var securityPolicy: ConnectionSecurityPolicy = .localDevelopment
   var accessLevel: DatabaseAccessLevel = .readWrite
+  var mcpMaxConcurrentQueries = 3
 
   init() {}
 
@@ -673,6 +687,7 @@ struct ConnectionDraft: Equatable, Sendable {
     auditTextSettings = profile.auditTextSettings ?? true
     securityPolicy = profile.effectiveSecurityPolicy
     accessLevel = profile.effectiveAccessLevel
+    mcpMaxConcurrentQueries = profile.effectiveMCPMaxConcurrentQueries
   }
 
   init(
@@ -816,7 +831,8 @@ struct ConnectionDraft: Equatable, Sendable {
       preferredCollation: preferredCollation,
       auditTextSettings: auditTextSettings,
       securityPolicy: securityPolicy,
-      accessLevel: accessLevel
+      accessLevel: accessLevel,
+      mcpMaxConcurrentQueries: mcpMaxConcurrentQueries
     )
   }
 
@@ -824,6 +840,9 @@ struct ConnectionDraft: Equatable, Sendable {
     var issues: [ConnectionDraftValidationIssue] = []
     if securityPolicy == .organizationManaged { issues.append(.organizationManagedPolicy) }
     if accessLevel == .migration { issues.append(.migrationAccess) }
+    if !ConnectionProfile.mcpConcurrencyRange.contains(mcpMaxConcurrentQueries) {
+      issues.append(.mcpConcurrency)
+    }
     if securityPolicy == .standard, transport == .direct, engine != .sqlite,
       !Self.isLoopbackHost(host), !requiresTLS
     {

@@ -4,6 +4,28 @@ import Testing
 @testable import Solnari
 
 struct ConnectionProfileStoreTests {
+  @Test("MCP 동시 실행 수는 기본 3개이고 허용 범위와 프로필 왕복을 검증한다")
+  func mcpConcurrencyValidation() throws {
+    var draft = ConnectionDraft()
+    draft.name = "SQLite"
+    draft.engine = .sqlite
+    draft.database = "/tmp/mcp-settings.sqlite"
+    #expect(draft.mcpMaxConcurrentQueries == 3)
+    for value in [1, 3, 10] {
+      draft.mcpMaxConcurrentQueries = value
+      let profile = try draft.makeProfile()
+      #expect(ConnectionDraft(profile: profile).mcpMaxConcurrentQueries == value)
+      let transferred = try ConnectionProfileTransferService.decode(
+        ConnectionProfileTransferService.encode([profile]))
+      #expect(transferred.first?.effectiveMCPMaxConcurrentQueries == value)
+    }
+    for value in [0, 11] {
+      draft.mcpMaxConcurrentQueries = value
+      #expect(draft.saveValidationIssues.contains(.mcpConcurrency))
+      #expect(throws: SolnariDatabaseError.self) { try draft.makeProfile() }
+    }
+  }
+
   @Test("연결 프로필은 사용자가 입력한 이름을 보존하고 런타임 상태를 초기화한다")
   func profileRoundTripPreservesUserNameAndResetsRuntimeState() throws {
     let suiteName = "SolnariTests.\(UUID().uuidString)"
@@ -29,7 +51,8 @@ struct ConnectionProfileStoreTests {
       preferredCollation: "ko-KR-x-icu",
       auditTextSettings: true,
       securityPolicy: .standard,
-      accessLevel: .readOnly
+      accessLevel: .readOnly,
+      mcpMaxConcurrentQueries: 7
     )
 
     try store.save([profile])
@@ -46,6 +69,8 @@ struct ConnectionProfileStoreTests {
     #expect(loaded.auditTextSettings == true)
     #expect(loaded.effectiveSecurityPolicy == .standard)
     #expect(loaded.effectiveAccessLevel == .readOnly)
+    #expect(loaded.effectiveMCPMaxConcurrentQueries == 7)
+    #expect(ConnectionDraft(profile: loaded).mcpMaxConcurrentQueries == 7)
   }
 
   @Test("연결 초안은 엔진과 네트워크 경로별 필수 입력을 검증한다")
@@ -193,6 +218,7 @@ struct ConnectionProfileStoreTests {
     #expect(profiles.first?.cloudSQL == nil)
     #expect(profiles.first?.effectiveSecurityPolicy == .localDevelopment)
     #expect(profiles.first?.effectiveAccessLevel == .readWrite)
+    #expect(profiles.first?.effectiveMCPMaxConcurrentQueries == 3)
   }
 
   @Test("기존 Kubernetes 프로필은 mode 필드가 없으면 임시 relay로 해석한다")

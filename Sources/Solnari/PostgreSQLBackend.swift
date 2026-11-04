@@ -41,21 +41,29 @@ actor PostgreSQLBackend {
     return try await fetchMetadata(using: session.client)
   }
 
-  func connect(profile: ConnectionProfile, password: String) async throws -> ConnectionMetadata {
-    disconnect(profileID: profile.id)
-    let session = makeSession(profile: profile, password: password)
+  func connect(profile: ConnectionProfile, password: String, maximumConnections: Int = 4)
+    async throws -> ConnectionMetadata
+  {
+    await disconnect(profileID: profile.id)
+    let session = makeSession(
+      profile: profile, password: password, maximumConnections: maximumConnections)
     sessions[profile.id] = session
 
     do {
       return try await fetchMetadata(using: session.client)
     } catch {
-      sessions.removeValue(forKey: profile.id)?.runTask.cancel()
+      if let failed = sessions.removeValue(forKey: profile.id) {
+        failed.runTask.cancel()
+        await failed.runTask.value
+      }
       throw error
     }
   }
 
-  func disconnect(profileID: UUID) {
-    sessions.removeValue(forKey: profileID)?.runTask.cancel()
+  func disconnect(profileID: UUID) async {
+    guard let session = sessions.removeValue(forKey: profileID) else { return }
+    session.runTask.cancel()
+    await session.runTask.value
   }
 
   func loadSchema(profileID: UUID) async throws -> SchemaSnapshot {
@@ -434,7 +442,9 @@ actor PostgreSQLBackend {
     )
   }
 
-  private func makeSession(profile: ConnectionProfile, password: String) -> Session {
+  private func makeSession(
+    profile: ConnectionProfile, password: String, maximumConnections: Int = 4
+  ) -> Session {
     let tls: PostgresClient.Configuration.TLS =
       profile.requiresTLS
       ? .require(.makeClientConfiguration()) : .prefer(.makeClientConfiguration())
@@ -447,7 +457,7 @@ actor PostgreSQLBackend {
       tls: tls
     )
     configuration.options.connectTimeout = .seconds(8)
-    configuration.options.maximumConnections = 4
+    configuration.options.maximumConnections = maximumConnections
     if profile.clientEncoding != "Automatic" {
       configuration.options.additionalStartupParameters.append(
         ("client_encoding", profile.clientEncoding))

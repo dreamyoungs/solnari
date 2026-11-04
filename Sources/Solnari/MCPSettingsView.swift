@@ -5,6 +5,9 @@ struct MCPSettingsView: View {
   @EnvironmentObject private var settings: AppSettings
   @EnvironmentObject private var mcpAccess: MCPAccessController
 
+  @State private var isInstalling = false
+  @State private var registrationMessage: String?
+
   var body: some View {
     Form {
       Section {
@@ -38,7 +41,7 @@ struct MCPSettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
           scopeRow(
             symbol: "sidebar.left",
-            text: settings.text("Only the currently selected connection is exposed.")
+            text: settings.text("MCP clients can choose among all currently connected databases.")
           )
           scopeRow(
             symbol: "key.slash",
@@ -47,7 +50,7 @@ struct MCPSettingsView: View {
           )
           scopeRow(
             symbol: "eye.fill",
-            text: settings.text("MCP queries follow the selected connection's access level.")
+            text: settings.text("MCP queries follow the requested connection's access level.")
           )
           scopeRow(
             symbol: "pencil.and.outline",
@@ -63,6 +66,34 @@ struct MCPSettingsView: View {
 
       Section {
         if let command = mcpAccess.registrationCommand {
+          Button(settings.text(isInstalling ? "Connecting…" : "Connect to Codex")) {
+            isInstalling = true
+            registrationMessage = nil
+            Task {
+              do {
+                try await mcpAccess.installInCodex()
+                mcpAccess.setEnabled(true)
+                registrationMessage = "Registered. Restart Codex to load Solnari tools."
+              } catch {
+                registrationMessage =
+                  "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below."
+              }
+              isInstalling = false
+            }
+          }
+          .disabled(isInstalling)
+          Text(
+            settings.text(
+              "Uses the installed Codex app or CLI. No separate Node or MCP installation is needed."
+            )
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          if let registrationMessage {
+            Text(settings.text(registrationMessage))
+              .font(.callout)
+          }
+
           Text(command)
             .font(.system(size: 10.5, design: .monospaced))
             .textSelection(.enabled)

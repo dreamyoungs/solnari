@@ -8,6 +8,9 @@ actor DatabaseBackend {
   private let transports: ConnectionTransportManager
   private var connectedEngines: [UUID: DatabaseEngine] = [:]
   private var connectedProfiles: [UUID: ConnectionProfile] = [:]
+  private var resolvedProfiles: [UUID: ConnectionProfile] = [:]
+  // Reservations include sessions that are still opening, so concurrent opens cannot exceed the limit.
+  private var mcpParentIDs: [UUID: UUID] = [:]
 
   init(
     postgresql: PostgreSQLBackend = PostgreSQLBackend(),
@@ -79,6 +82,7 @@ actor DatabaseBackend {
       let metadata = try await nodeCloudSQL.connect(profile: profile, password: password)
       connectedEngines[profile.id] = profile.engine
       connectedProfiles[profile.id] = profile
+      resolvedProfiles[profile.id] = profile
       return metadata
     }
     let endpoint = try await transports.open(profile: profile)
@@ -88,6 +92,7 @@ actor DatabaseBackend {
       let metadata = try await connectEngine(resolved, password: credential)
       connectedEngines[profile.id] = profile.engine
       connectedProfiles[profile.id] = profile
+      resolvedProfiles[profile.id] = resolved
       return metadata
     } catch {
       await transports.close(profileID: profile.id)
@@ -96,6 +101,53 @@ actor DatabaseBackend {
           "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect."
         )
       }
+      throw error
+    }
+  }
+
+  /// Each request owns a fresh database session; credentials and transport remain app-owned.
+  func openMCPSession(
+    parentID: UUID, password: String, requiredAccessLevel: DatabaseAccessLevel? = nil
+  ) async throws -> UUID {
+    guard let profile = connectedProfiles[parentID], let resolved = resolvedProfiles[parentID],
+      mcpParentIDs[parentID] == nil
+    else { throw SolnariDatabaseError.notConnected }
+    if let requiredAccessLevel, profile.effectiveAccessLevel != requiredAccessLevel {
+      throw SolnariDatabaseError.queryNotAllowedForAccessLevel
+    }
+    guard
+      mcpParentIDs.values.filter({ $0 == parentID }).count
+        < profile.effectiveMCPMaxConcurrentQueries
+    else {
+      throw MCPAccessError.sessionLimitReached
+    }
+    let sessionID = UUID()
+    mcpParentIDs[sessionID] = parentID
+    let child = resolved.sessionProfile(id: sessionID, database: profile.database)
+    connectedProfiles[sessionID] = child
+    connectedEngines[sessionID] = child.engine
+    do {
+      _ = try await engine(for: parentID)
+      try Task.checkCancellation()
+      guard mcpParentIDs[sessionID] == parentID, connectedProfiles[parentID] != nil,
+        connectedProfiles[sessionID] != nil
+      else { throw SolnariDatabaseError.notConnected }
+      if profile.transport == .cloudSQL {
+        _ = try await nodeCloudSQL.connect(profile: child, password: password)
+      } else {
+        let credential = profile.usesPersonalIAM ? try await nodeCloudSQL.loginToken() : password
+        guard mcpParentIDs[sessionID] == parentID, connectedProfiles[parentID] != nil,
+          connectedProfiles[sessionID] != nil
+        else { throw SolnariDatabaseError.notConnected }
+        _ = try await connectEngine(child, password: credential, maximumConnections: 1)
+      }
+      try Task.checkCancellation()
+      guard mcpParentIDs[sessionID] == parentID, connectedProfiles[parentID] != nil else {
+        throw SolnariDatabaseError.notConnected
+      }
+      return sessionID
+    } catch {
+      await disconnect(profileID: sessionID)
       throw error
     }
   }
@@ -125,9 +177,15 @@ actor DatabaseBackend {
   func disconnect(profileID: UUID) async {
     let profile = connectedProfiles.removeValue(forKey: profileID)
     let engine = connectedEngines.removeValue(forKey: profileID)
+    resolvedProfiles.removeValue(forKey: profileID)
+    let isMCPSession = mcpParentIDs[profileID] != nil
+    // Keep the reservation until the physical session has finished closing.
+    defer { mcpParentIDs.removeValue(forKey: profileID) }
+    let children = mcpParentIDs.filter { $0.value == profileID }.map(\.key)
+    for child in children { await disconnect(profileID: child) }
     if profile?.transport == .cloudSQL {
       await nodeCloudSQL.disconnect(profileID: profileID)
-      await transports.close(profileID: profileID)
+      if !isMCPSession { await transports.close(profileID: profileID) }
       return
     }
     switch engine {
@@ -139,7 +197,7 @@ actor DatabaseBackend {
       await mysql.disconnect(profileID: profileID)
       await sqlite.disconnect(profileID: profileID)
     }
-    await transports.close(profileID: profileID)
+    if !isMCPSession { await transports.close(profileID: profileID) }
   }
 
   func disconnectAll() async {
@@ -227,11 +285,15 @@ actor DatabaseBackend {
     }
   }
 
-  private func connectEngine(_ profile: ConnectionProfile, password: String) async throws
+  private func connectEngine(
+    _ profile: ConnectionProfile, password: String, maximumConnections: Int = 4
+  ) async throws
     -> ConnectionMetadata
   {
     switch profile.engine {
-    case .postgresql: try await postgresql.connect(profile: profile, password: password)
+    case .postgresql:
+      try await postgresql.connect(
+        profile: profile, password: password, maximumConnections: maximumConnections)
     case .mysql: try await mysql.connect(profile: profile, password: password)
     case .sqlite: try await sqlite.connect(profile: profile)
     }
@@ -239,7 +301,7 @@ actor DatabaseBackend {
 
   private func engine(for profileID: UUID) async throws -> DatabaseEngine {
     if connectedProfiles[profileID]?.transport == .ssh,
-      !(await transports.isRunning(profileID: profileID))
+      !(await transports.isRunning(profileID: mcpParentIDs[profileID] ?? profileID))
     {
       throw SolnariDatabaseError.sshTunnelDisconnected
     }

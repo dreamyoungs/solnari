@@ -46,7 +46,8 @@ Kubernetes, and SQLite currently retain their native Swift adapters.
 - The Node Core communicates only through bounded private stdio JSON-RPC and must not spawn external
   processes.
 - The external-agent MCP server must remain opt-in, local-only, credential-free, and scoped to the
-  connection visibly selected in Solnari. New tools need accurate MCP annotations and failure tests.
+  already connected databases explicitly identified in each request. Use separate, bounded MCP
+  sessions; keep the app session independent. New tools need accurate MCP annotations and failure tests.
 - General database passwords belong only in the local AES-GCM credential vault. Do not put secrets
   in connection definitions, logs, process arguments, environment variables, fixtures, or Codex
   context.

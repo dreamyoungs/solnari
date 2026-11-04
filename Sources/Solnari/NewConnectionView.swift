@@ -625,6 +625,28 @@ struct NewConnectionView: View {
           }
         }
 
+        VStack(alignment: .leading, spacing: 7) {
+          HStack {
+            fieldLabel("MCP concurrent requests")
+            Spacer()
+            Stepper(
+              value: $draft.mcpMaxConcurrentQueries, in: ConnectionProfile.mcpConcurrencyRange
+            ) {
+              Text("\(draft.mcpMaxConcurrentQueries)")
+                .monospacedDigit()
+            }
+            .fixedSize()
+            .accessibilityLabel(settings.text("MCP concurrent requests"))
+          }
+          Text(
+            settings.text(
+              "Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply."
+            )
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+
         HStack(alignment: .top, spacing: 9) {
           Image(systemName: draft.accessLevel.symbol)
             .foregroundStyle(draft.accessLevel.tint)

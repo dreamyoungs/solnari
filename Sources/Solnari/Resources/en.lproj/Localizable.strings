@@ -200,3 +200,15 @@
 "Reconnect SSH tunnel and database session" = "Reconnect SSH tunnel and database session";
 "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect.";
 "The connection path failed: SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "The connection path failed: SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect.";
+
+"MCP clients can choose among all currently connected databases." = "MCP clients can choose among all currently connected databases.";
+"MCP queries follow the requested connection's access level." = "MCP queries follow the requested connection's access level.";
+"Connecting…" = "Connecting…";
+"Connect to Codex" = "Connect to Codex";
+"Registered. Restart Codex to load Solnari tools." = "Registered. Restart Codex to load Solnari tools.";
+"Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below." = "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below.";
+"Uses the installed Codex app or CLI. No separate Node or MCP installation is needed." = "Uses the installed Codex app or CLI. No separate Node or MCP installation is needed.";
+
+"MCP concurrent requests" = "MCP concurrent requests";
+"Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply." = "Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply.";
+"MCP concurrent requests must be between 1 and 10." = "MCP concurrent requests must be between 1 and 10.";

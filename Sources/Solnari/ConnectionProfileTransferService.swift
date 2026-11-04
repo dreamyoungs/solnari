@@ -111,7 +111,7 @@ enum ConnectionProfileTransferService {
           "name", "database", "engine", "transport", "host", "port", "username",
           "requiresTLS", "clientEncoding", "cloudSQL", "ssh", "kubernetes",
           "preferredCharacterSet", "preferredCollation", "auditTextSettings",
-          "securityPolicy", "accessLevel",
+          "securityPolicy", "accessLevel", "mcpMaxConcurrentQueries",
         ],
         context: context
       )
@@ -184,6 +184,7 @@ private struct TransferConnection: Codable {
   let auditTextSettings: Bool?
   let securityPolicy: ConnectionSecurityPolicy?
   let accessLevel: DatabaseAccessLevel?
+  let mcpMaxConcurrentQueries: Int?
 
   init(_ profile: ConnectionProfile) {
     name = profile.name
@@ -203,11 +204,18 @@ private struct TransferConnection: Codable {
     auditTextSettings = profile.auditTextSettings
     securityPolicy = profile.securityPolicy
     accessLevel = profile.accessLevel
+    mcpMaxConcurrentQueries = profile.mcpMaxConcurrentQueries
   }
 
   func makeProfile(index: Int) throws -> ConnectionProfile {
     do {
       try validateConfiguration(index: index)
+      if let mcpMaxConcurrentQueries,
+        !ConnectionProfile.mcpConcurrencyRange.contains(mcpMaxConcurrentQueries)
+      {
+        throw ConnectionProfileTransferError.invalidConnection(
+          index: index, reason: ConnectionDraftValidationIssue.mcpConcurrency.message)
+      }
       let profile = ConnectionProfile(
         name: name,
         database: database,
@@ -225,7 +233,8 @@ private struct TransferConnection: Codable {
         preferredCollation: preferredCollation,
         auditTextSettings: auditTextSettings,
         securityPolicy: securityPolicy,
-        accessLevel: accessLevel
+        accessLevel: accessLevel,
+        mcpMaxConcurrentQueries: mcpMaxConcurrentQueries
       )
       let draft = ConnectionDraft(profile: profile)
       if let issue = draft.saveValidationIssues.first {
