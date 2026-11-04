@@ -31,7 +31,7 @@ enum MCPAccessError: LocalizedError {
     case .selectedConnectionChanged:
       "The database session has changed. Refresh solnari_list_connections before executing SQL."
     case .schemaObjectNotFound:
-      "The requested schema object is not available in the selected connection."
+      "The requested schema object is not available in the requested connection."
     case .responseTooLarge:
       "The MCP response is too large. Select fewer columns or use a smaller LIMIT."
     case .sessionLimitReached:
@@ -239,13 +239,10 @@ final class MCPAccessController: ObservableObject {
       let result: String
       switch request.method {
       case "status":
-        result = try encode([
-          "status": "ready",
-          "connectionScope":
-            "Use solnari_list_connections to choose an already connected database.",
-          "writePolicy":
-            "Read / Write connections execute changes immediately. Read-only connections reject changes.",
-        ])
+        result = try encode(
+          MCPStatusSnapshot(
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+              ?? "development"))
       case "connections":
         result = try encode(workspace.mcpConnectedProfiles().map(connectionSnapshot))
       case "activeConnection":
@@ -346,7 +343,7 @@ final class MCPAccessController: ObservableObject {
       code: code, accessLevel: access?.rawValue ?? "No connection",
       requestedOperation: request.method,
       nextStep:
-        "Refresh solnari_list_connections. \(tool). To review SQL manually, open a query tab in Solnari, check the selected connection and run it there. Access changes require reconnecting.",
+        "Refresh solnari_list_connections and use the intended connectionID without switching the app selection. \(tool). Only if the user chooses manual execution, select that database in a Solnari query tab and review the SQL there. Access changes require reconnecting.",
       verification:
         "Use SELECT catalog queries through the permitted execution tool to check membership or privileges. Command success alone does not verify the resulting state."
     )
@@ -399,4 +396,16 @@ private struct ExecuteQueryParameters: Decodable {
   let connectionID: UUID
   let sql: String
   let maxRows: Int?
+}
+
+private struct MCPStatusSnapshot: Encodable {
+  let appVersion: String
+  let status = "ready"
+  let supportsMultipleConnections = true
+  let requiresUISelection = false
+  let connectionsTool = "solnari_list_connections"
+  let connectionScope =
+    "Use multiple connected databases concurrently by specifying connectionID on each request. Do not ask to switch the app selection."
+  let writePolicy =
+    "Read / Write connections execute changes immediately. Read-only connections reject changes."
 }

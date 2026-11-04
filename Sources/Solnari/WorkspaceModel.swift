@@ -824,9 +824,9 @@ final class WorkspaceModel: ObservableObject {
     mcpRequests.values.filter { $0 == profileID }.count
   }
 
-  private func withMCPSession<T>(
+  private func withMCPSession<T: Sendable>(
     profile: ConnectionProfile, requiredAccessLevel: DatabaseAccessLevel? = nil,
-    operation: (UUID) async throws -> T
+    operation: @MainActor (UUID) async throws -> T
   ) async throws -> T {
     let parentID = backendSessionID(for: profile.id)
     let requestID = UUID()

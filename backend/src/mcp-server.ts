@@ -15,7 +15,9 @@ const readOnlyAnnotations = {
 
 const connectionID = z
   .uuid()
-  .describe("Live session ID returned by solnari_list_connections.");
+  .describe(
+    "ID of the target database from solnari_list_connections. Multiple IDs may be used concurrently without switching the app selection.",
+  );
 
 const result = async (operation: Promise<unknown>) => {
   try {
@@ -48,12 +50,17 @@ export const createSolnariMCPServer = (
       title: "Solnari Database Tools",
       version: "0.1.0",
       description:
-        "Database access governed by the connection permissions selected in Solnari.",
+        "Access multiple already connected databases by connectionID, independently of the Solnari app selection.",
       websiteUrl: "https://github.com/dreamyoungs/solnari",
     },
     {
       instructions:
-        "Solnari exposes databases already connected in its macOS app. " +
+        "Solnari supports multiple connected databases at the same time. There is no global active MCP connection. " +
+        "Do not ask the user to switch the selected database in Solnari or disconnect another database. " +
+        "Call solnari_list_connections, match the requested database by name/database, and pass its connectionID " +
+        "on each request. Use different connectionIDs concurrently when working with multiple databases. " +
+        "Ask the user to connect a database in Solnari only if it is absent from the connected list. " +
+        "If the intended target is ambiguous, ask which listed database to use; do not ask for a UI switch. " +
         "Never request credentials, hosts, usernames, or cloud project identifiers. Call " +
         "solnari_list_connections and choose the intended database before querying. On Read-only profiles use " +
         "solnari_execute_read_query. On Read / Write profiles use solnari_execute_query with the " +
@@ -84,7 +91,10 @@ export const createSolnariMCPServer = (
     {
       title: "List connected Solnari databases",
       description:
-        "Return sanitized metadata and live session IDs for already connected databases. Choose the intended database and pass its connectionID to database tools. Disconnected profiles are excluded.",
+        "List ALL already connected databases available to MCP simultaneously. Start here to identify each requested " +
+        "database by name/database and pass its connectionID to schema/query tools. Multiple listed databases can be " +
+        "used concurrently without switching the app selection or disconnecting another connection. " +
+        "Only ask the user to connect a database if it is absent. Disconnected profiles are excluded.",
       inputSchema: z.object({}),
       annotations: { ...readOnlyAnnotations, openWorldHint: false },
     },
@@ -92,24 +102,13 @@ export const createSolnariMCPServer = (
   );
 
   server.registerTool(
-    "solnari_get_active_connection",
-    {
-      title: "Get active Solnari connection",
-      description:
-        "Return sanitized metadata for the connection currently selected in Solnari. " +
-        "This never returns credentials, hosts, usernames, SSH details, or cloud project IDs.",
-      inputSchema: z.object({}),
-      annotations: { ...readOnlyAnnotations, openWorldHint: false },
-    },
-    async () => result(bridge.call("activeConnection")),
-  );
-
-  server.registerTool(
     "solnari_list_schema",
     {
       title: "List database schema",
       description:
-        "List tables, views, materialized views, and functions from the specified connected database.",
+        "List tables, views, materialized views, and functions from the specified connected database. " +
+        "Use its connectionID from solnari_list_connections without switching the app selection. " +
+        "You can request schemas from different connected databases concurrently.",
       inputSchema: z.object({ connectionID }),
       annotations: readOnlyAnnotations,
     },
@@ -122,7 +121,8 @@ export const createSolnariMCPServer = (
       title: "Describe a database object",
       description:
         "Return columns, indexes, constraints, comments, text rules, and definition metadata for " +
-        "one schema object in the specified connected database.",
+        "one schema object in the specified connected database. Use its connectionID from " +
+        "solnari_list_connections without switching the app selection; other connected databases remain available.",
       inputSchema: z.object({
         connectionID,
         schema: z
@@ -148,7 +148,8 @@ export const createSolnariMCPServer = (
       description:
         "Execute SQL, including reads, INSERT, UPDATE, DELETE, and DDL, only when the specified " +
         "Solnari connection is already connected with Read / Write access. Pass connectionID " +
-        "from solnari_list_connections; an unavailable or read-only session is rejected. " +
+        "from solnari_list_connections without switching the app selection. Other connected databases can be used " +
+        "concurrently. An unavailable or read-only session is rejected. " +
         "Changes execute immediately under the database role's permissions. An empty result " +
         "can mean a successful write; returnedRowCount is not an affected-row count. " +
         "Do not automatically retry after a timeout or transport error.",
@@ -181,7 +182,9 @@ export const createSolnariMCPServer = (
       title: "Execute a read-only query",
       description:
         "Execute one read-only SQL statement on the specified connected database. The Solnari " +
-        "profile must already be connected and configured as Read-only. Solnari enforces both " +
+        "profile must already be connected and configured as Read-only. Use its connectionID from " +
+        "solnari_list_connections without switching the app selection; other databases remain available concurrently. " +
+        "Solnari enforces both " +
         "SQL preflight and database-session read-only mode. Use an explicit small LIMIT.",
       inputSchema: z.object({
         connectionID,

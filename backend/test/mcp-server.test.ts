@@ -32,7 +32,6 @@ describe("Solnari MCP server", () => {
     expect(tools.tools.map((tool) => tool.name)).toEqual([
       "solnari_status",
       "solnari_list_connections",
-      "solnari_get_active_connection",
       "solnari_list_schema",
       "solnari_describe_object",
       "solnari_execute_query",
@@ -119,6 +118,54 @@ describe("Solnari MCP server", () => {
     expect(denied.isError).toBe(true);
     expect(denied.structuredContent).toEqual({ error: details });
     expect(JSON.stringify(denied)).not.toContain(query.sql);
+  });
+
+  it("routes two listed databases concurrently without an active-connection switch", async () => {
+    const databases = [
+      {
+        connectionID: "00000000-0000-4000-8000-000000000001",
+        name: "Development",
+      },
+      {
+        connectionID: "00000000-0000-4000-8000-000000000002",
+        name: "Production",
+      },
+    ];
+    const call = vi.fn(async (method: string, params?: unknown) =>
+      method === "connections" ? databases : params,
+    );
+    const server = createSolnariMCPServer({ call });
+    const client = new Client({ name: "solnari-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeOperations.push(
+      () => client.close(),
+      () => server.close(),
+    );
+
+    const listed = await client.callTool({
+      name: "solnari_list_connections",
+      arguments: {},
+    });
+    expect(listed.structuredContent).toEqual({ data: databases });
+    const results = await Promise.all(
+      databases.map(({ connectionID }) =>
+        client.callTool({
+          name: "solnari_list_schema",
+          arguments: { connectionID },
+        }),
+      ),
+    );
+    expect(results.map((item) => item.structuredContent)).toEqual(
+      databases.map(({ connectionID }) => ({ data: { connectionID } })),
+    );
+    expect(call.mock.calls.map(([method]) => method)).toEqual([
+      "connections",
+      "schema",
+      "schema",
+    ]);
   });
 
   it("rejects invalid arguments before they reach Solnari", async () => {

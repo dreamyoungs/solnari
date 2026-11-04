@@ -10,7 +10,8 @@ All notable changes to Solnari are documented here. The project follows
 ### Added
 
 - Let MCP clients list already connected databases and pass an explicit connection ID to every
-  schema and query tool, independently of the workspace selection.
+  schema and query tool, independently of the workspace selection. Remove the legacy active-connection
+  tool and explicitly instruct clients to use multiple connection IDs without asking for UI switches.
 - Register Solnari MCP from Settings using the installed Codex app or CLI, without a separate
   Node or MCP installation. Existing manual registration remains available.
 - Configure MCP concurrency per connection: default 3, range 1–10, applied after saving and

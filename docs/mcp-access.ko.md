@@ -45,7 +45,6 @@ Codex의 공식 등록 명령이 보존합니다. 기존 `solnari` 등록은 현
 | --- | --- |
 | `solnari_status` | 실행 중인 Solnari MCP bridge 상태 확인 |
 | `solnari_list_connections` | 현재 연결된 DB의 정제된 metadata와 session ID 목록 |
-| `solnari_get_active_connection` | 현재 선택한 연결의 정제된 metadata 확인 |
 | `solnari_list_schema` | 지정한 연결의 table, view, materialized view와 function 목록 |
 | `solnari_describe_object` | column, index, constraint, comment와 definition 조회 |
 | `solnari_execute_read_query` | 읽기 전용 profile에서 단일 read query 실행 |
@@ -69,6 +68,13 @@ Codex의 공식 등록 명령이 보존합니다. 기존 `solnari` 등록은 현
 필수입니다. 앱의 화면 선택이나 다른 MCP 클라이언트의 요청은 실행 대상을 바꾸지 않습니다.
 연결이 끊겼거나 DB 전환으로 session ID가 바뀌면 이전 ID는 거절합니다. MCP가 DB를 자동으로
 연결하거나 다른 DB로 대체하지 않습니다.
+
+MCP에는 전역 활성 연결이 없습니다. 연결된 개발·운영 DB를 동시에 사용할 수 있으므로 앱의
+화면 선택을 바꾸거나 다른 연결을 끊을 필요가 없습니다. 목록에서 대상 이름·database를
+확인한 뒤 각 요청의 ID만 지정합니다. AI에는 이 동작을 서버 지침과 각 도구 설명으로
+안내하며, 혼동을 유발하는 기존 `solnari_get_active_connection` 도구는 공개 목록에서 제거했습니다.
+`solnari_status`는 `supportsMultipleConnections: true`, `requiresUISelection: false`와 앱 버전을
+반환합니다. 이전 도구 설명이 남아 있으면 MCP 클라이언트를 재시작하고 등록 앱 경로를 확인하세요.
 
 ### 연결별 MCP 동시 실행 수
 
