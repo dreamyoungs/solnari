@@ -5,6 +5,36 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.6.1 Apple Silicon preview] - 2026-11-04
+
+### Improved
+
+- Select an existing SSH private key from the connection editor. Save its local path without
+  storing key material or exporting the machine-specific path.
+- Keep SSH host identity verification enabled, bound connection attempts, and detect a stopped
+  tunnel before executing SQL. Reconnect creates a new tunnel and database session without replaying SQL.
+
+### Fixed
+
+- Mark detected SSH disconnections as failed instead of continuing to display a connected status.
+- Show translated SSH failure details in the results and messages panels. Require an explicit
+  reconnect after a tunnel disconnect; the Run button does not reconnect and replay SQL.
+
+### Security
+
+- Refresh compatible npm dependencies, including pinned MCP client/server SDK 2.4.0, to resolve
+  the npm audit findings present in the previous dependency lockfile.
+
+### Verification and limitations
+
+- Node formatting, type checking and the low-or-higher npm audit gate pass; the audit reports zero
+  known vulnerabilities for the release lockfile.
+- The full Swift test run completed successfully with optional external-environment tests skipped.
+  Live Linux PostgreSQL login, read-only queries, terminated-tunnel detection and manual reconnect
+  were verified in the macOS app. Reconnection created a different database session.
+- Sleep/wake recovery, long network outages and disconnects during an active transaction were not
+  tested. This Apple Silicon preview remains ad-hoc signed and not notarized.
+
 ## [0.6.0 Apple Silicon preview] - 2026-10-01
 
 ### Added
