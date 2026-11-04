@@ -20,8 +20,8 @@
 </p>
 
 > [!NOTE]
-> The current version is a **0.6.1 Apple silicon preview**. An unsigned DMG is available from
-> [GitHub Releases](https://github.com/dreamyoungs/solnari/releases/tag/v0.6.1). Until the project
+> The current version is a **0.7.0 Apple silicon preview**. An unsigned DMG is available from
+> [GitHub Releases](https://github.com/dreamyoungs/solnari/releases/tag/v0.7.0). Until the project
 > joins the Apple Developer Program, the app is not Developer ID-signed or notarized and requires
 > the one-time macOS approval described below.
 
@@ -75,7 +75,7 @@ Solnari now aims to be:
 - Runtime Korean/English switching and native light/dark appearance
 - Single-instance lifecycle with session cleanup on quit, screen lock, sleep, and user switching
 - Conservative SQL preflight and database-session write protection for read-only profiles
-- An opt-in local MCP server exposing selected-connection metadata, schema, and query tools governed by connection permissions to external Codex clients
+- An opt-in local MCP server exposing metadata and schema for connected databases, and query tools governed by connection permissions to external Codex clients
 - [Non-analyzing query plans](docs/query-plans.md) without changing editor SQL
 - [Preview and pinned schema tabs](docs/schema-tabs.md)
 - [Local dialect-aware SQL formatting](docs/sql-formatting.md), selection mapping and undo
@@ -127,7 +127,7 @@ Local Codex → bundled Node MCP STDIO server → user-only local socket → Swi
 
 The Node Core runs with a sanitized environment, an isolated Application Support working directory,
 and every `node:child_process` API disabled. External Codex MCP access is off by default, limited to
-the selected connection, and never returns credentials, hosts, or cloud project identifiers. Tests
+already connected databases chosen per request, and never returns credentials, hosts, or cloud project identifiers. Tests
 also enforce that Cloud SQL cannot silently fall back to `gcloud` or an external proxy.
 
 ## In progress
@@ -145,8 +145,8 @@ also enforce that Cloud SQL cannot silently fall back to `gcloud` or an external
 
 ### Install the Apple silicon DMG
 
-Download `Solnari-0.6.1-macos-arm64-unsigned.dmg` from the
-[Solnari 0.6.1 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.6.1). This free,
+Download `Solnari-0.7.0-macos-arm64-unsigned.dmg` from the
+[Solnari 0.7.0 Release](https://github.com/dreamyoungs/solnari/releases/tag/v0.7.0). This free,
 open-source preview was created without Apple Developer Program membership. It is ad-hoc signed
 and has not been notarized by Apple. Approve its first launch on an Apple silicon Mac as follows:
 
@@ -234,7 +234,7 @@ Create a test DMG without Apple Developer Program membership:
 ./Scripts/package-local-dmg.sh
 ```
 
-The output is `.build/release/Solnari-0.6.1-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
+The output is `.build/release/Solnari-0.7.0-macos-arm64-unsigned.dmg` with a SHA-256 file. Like the
 GitHub Release preview, it contains an ad-hoc signed app and is not notarized.
 The workflow applies a fixed 660×400 Finder window, positioned app and Applications icons, a Retina
 background, and a custom volume icon, then verifies the contents and a clean mount/unmount cycle.
@@ -261,7 +261,7 @@ export SOLNARI_NOTARY_KEYCHAIN_PROFILE="solnari-notary"
 ./Scripts/package-release.sh
 ```
 
-The output is `.build/release/Solnari-0.6.1-macos-arm64.dmg` with a SHA-256 file. The workflow signs
+The output is `.build/release/Solnari-0.7.0-macos-arm64.dmg` with a SHA-256 file. The workflow signs
 the app and DMG with Developer ID, notarizes the DMG, and staples the ticket. Before enrollment, the
 certificate and notary preflight checks intentionally prevent this workflow from running.
 
@@ -273,10 +273,12 @@ Developer ID signing and Apple notarization.
 
 ### Connect an external Codex client
 
-Enable local MCP under `Settings → MCP access`, then run the displayed Codex registration command
-once and restart Codex. The tools expose sanitized metadata and schema for the connection currently
-selected in Solnari. Already connected `Read-only` profiles allow read queries; `Read / Write`
-profiles also allow changes through the write-capable execution tool. MCP is off on a new installation. See
+Click `Settings → MCP access → Connect to Codex`, then restart Codex. No separate CLI, Node,
+or MCP installation is needed when the Codex desktop app is installed. Use `solnari_list_connections`
+and pass the chosen database's `connectionID` to schema and query tools. Already connected `Read-only` profiles allow read queries; `Read / Write`
+profiles also allow changes through the write-capable execution tool. Connection settings include an
+MCP concurrent request limit (default 3, range 1–10), using a fresh dedicated session per request.
+MCP is off on a new installation. See
 [external-agent MCP access](docs/mcp-access.ko.md) for its security boundary and limitations.
 
 ## Verify

@@ -16,26 +16,26 @@ enum MCPAccessError: LocalizedError {
   case selectedConnectionChanged
   case schemaObjectNotFound
   case responseTooLarge
-  case queryAlreadyRunning
+  case sessionLimitReached
 
   var errorDescription: String? {
     switch self {
     case .noSelectedConnection:
       "Select a connection in Solnari before using its MCP tools."
     case .connectionNotReady:
-      "The selected Solnari connection must already be connected."
+      "The requested Solnari connection must already be connected. Refresh solnari_list_connections."
     case .readOnlyConnectionRequired:
       "MCP query execution is available only for a read-only Solnari connection."
     case .readWriteConnectionRequired:
       "Enable Read / Write on this connection in Solnari and reconnect before executing this MCP query."
     case .selectedConnectionChanged:
-      "The selected connection has changed. Get the active connection again before executing SQL."
+      "The database session has changed. Refresh solnari_list_connections before executing SQL."
     case .schemaObjectNotFound:
-      "The requested schema object is not available in the selected connection."
+      "The requested schema object is not available in the requested connection."
     case .responseTooLarge:
       "The MCP response is too large. Select fewer columns or use a smaller LIMIT."
-    case .queryAlreadyRunning:
-      "Another query is already running in Solnari."
+    case .sessionLimitReached:
+      "All MCP sessions for this connection are in use. Try again after an active request completes."
     }
   }
 }
@@ -51,6 +51,7 @@ struct MCPConnectionSnapshot: Codable, Sendable {
   let serverVersion: String?
   let serverEncoding: String?
   let serverTimeZone: String?
+  let mcpMaxConcurrentQueries: Int
   var executionTool: String? = nil
 }
 
@@ -167,7 +168,7 @@ final class MCPAccessController: ObservableObject {
     stop(state: isEnabled ? .suspended : .disabled)
   }
 
-  var registrationCommand: String? {
+  var registrationArguments: [String]? {
     guard
       let node = Bundle.main.url(
         forResource: "node",
@@ -186,13 +187,21 @@ final class MCPAccessController: ObservableObject {
       )
     else { return nil }
 
-    return [
-      "codex mcp add solnari --",
-      Self.shellQuote(node.path),
-      "--require",
-      Self.shellQuote(guardScript.path),
-      Self.shellQuote(server.path),
-    ].joined(separator: " ")
+    return [node.path, "--require", guardScript.path, server.path]
+  }
+
+  var registrationCommand: String? {
+    registrationArguments.map {
+      "codex mcp add solnari -- " + $0.map(Self.shellQuote).joined(separator: " ")
+    }
+  }
+
+  func installInCodex() async throws {
+    guard let executable = MCPRegistration.executableURL(), let arguments = registrationArguments
+    else {
+      throw MCPRegistration.RegistrationError.failed
+    }
+    try await MCPRegistration.install(executable: executable, serverArguments: arguments)
   }
 
   private func start() {
@@ -230,24 +239,23 @@ final class MCPAccessController: ObservableObject {
       let result: String
       switch request.method {
       case "status":
-        result = try encode([
-          "status": "ready",
-          "accessLevel": workspace.selectedConnection?.effectiveAccessLevel.rawValue
-            ?? "No connection",
-          "executionTool": Self.executionTool(
-            for: workspace.selectedConnection?.effectiveAccessLevel) ?? "unavailable",
-          "writePolicy":
-            "Read / Write connections execute changes immediately. Read-only connections reject changes.",
-        ])
+        result = try encode(
+          MCPStatusSnapshot(
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+              ?? "development"))
+      case "connections":
+        result = try encode(workspace.mcpConnectedProfiles().map(connectionSnapshot))
       case "activeConnection":
         result = try encode(connectionSnapshot(from: try workspace.mcpSelectedProfile()))
       case "schema":
-        result = try encode(try await workspace.mcpSchemaSnapshot())
+        let params = try decode(ConnectionParameters.self, from: request.paramsJSON)
+        result = try encode(
+          try await workspace.mcpSchemaSnapshot(connectionID: params.connectionID))
       case "describeObject":
         let params = try decode(DescribeObjectParameters.self, from: request.paramsJSON)
         result = try encode(
           try await workspace.mcpDescribeObject(
-            schema: params.schema,
+            connectionID: params.connectionID, schema: params.schema,
             name: params.name,
             kind: params.kind.flatMap(SchemaObjectKind.init(rawValue:))
           )
@@ -264,7 +272,7 @@ final class MCPAccessController: ObservableObject {
         let maximumRows = min(max(params.maxRows ?? 50, 1), 200)
         result = try encode(
           try await workspace.mcpExecuteReadOnlyQuery(
-            sql: params.sql,
+            connectionID: params.connectionID, sql: params.sql,
             maximumRows: maximumRows
           )
         )
@@ -279,11 +287,11 @@ final class MCPAccessController: ObservableObject {
     } catch let error as MCPAccessError {
       return .failure(
         id: request.id, message: error.localizedDescription,
-        details: failureDetails(code: Self.errorCode(error), operation: request.method))
+        details: failureDetails(code: Self.errorCode(error), request: request))
     } catch let error as SolnariDatabaseError {
       return .failure(
         id: request.id, message: error.localizedDescription,
-        details: failureDetails(code: "DATABASE_REQUEST_REJECTED", operation: request.method))
+        details: failureDetails(code: "DATABASE_REQUEST_REJECTED", request: request))
     } catch {
       return .failure(id: request.id, message: "Solnari could not complete the MCP request.")
     }
@@ -291,7 +299,7 @@ final class MCPAccessController: ObservableObject {
 
   private func connectionSnapshot(from profile: ConnectionProfile) -> MCPConnectionSnapshot {
     MCPConnectionSnapshot(
-      connectionID: workspace.selectedDatabaseSessionID ?? profile.id,
+      connectionID: workspace.mcpConnectionID(for: profile),
       name: profile.name,
       database: profile.database,
       engine: profile.engine.rawValue,
@@ -301,6 +309,7 @@ final class MCPAccessController: ObservableObject {
       serverVersion: profile.serverVersion,
       serverEncoding: profile.serverEncoding,
       serverTimeZone: profile.serverTimeZone,
+      mcpMaxConcurrentQueries: profile.effectiveMCPMaxConcurrentQueries,
       executionTool: Self.executionTool(for: profile.effectiveAccessLevel)
     )
   }
@@ -317,21 +326,24 @@ final class MCPAccessController: ObservableObject {
     switch error {
     case .readOnlyConnectionRequired, .readWriteConnectionRequired: "MCP_ACCESS_LEVEL_MISMATCH"
     case .selectedConnectionChanged: "MCP_CONNECTION_CHANGED"
-    case .queryAlreadyRunning: "MCP_QUERY_IN_PROGRESS"
+    case .sessionLimitReached: "MCP_SESSION_LIMIT_REACHED"
     case .noSelectedConnection, .connectionNotReady: "MCP_CONNECTION_NOT_READY"
     case .schemaObjectNotFound: "MCP_OBJECT_NOT_FOUND"
     case .responseTooLarge: "MCP_RESPONSE_TOO_LARGE"
     }
   }
 
-  private func failureDetails(code: String, operation: String) -> MCPFailureDetails {
-    let access = workspace.selectedConnection?.effectiveAccessLevel
+  private func failureDetails(code: String, request: MCPBridgeRequest) -> MCPFailureDetails {
+    let target = try? decode(ConnectionParameters.self, from: request.paramsJSON)
+    let access = workspace.mcpConnectedProfiles().first {
+      workspace.mcpConnectionID(for: $0) == target?.connectionID
+    }?.effectiveAccessLevel
     let tool = Self.executionTool(for: access) ?? "No execution tool is available"
     return MCPFailureDetails(
       code: code, accessLevel: access?.rawValue ?? "No connection",
-      requestedOperation: operation,
+      requestedOperation: request.method,
       nextStep:
-        "Refresh solnari_get_active_connection. \(tool). To review SQL manually, open a query tab in Solnari, check the selected connection and run it there. Access changes require reconnecting.",
+        "Refresh solnari_list_connections and use the intended connectionID without switching the app selection. \(tool). Only if the user chooses manual execution, select that database in a Solnari query tab and review the SQL there. Access changes require reconnecting.",
       verification:
         "Use SELECT catalog queries through the permitted execution tool to check membership or privileges. Command success alone does not verify the resulting state."
     )
@@ -363,13 +375,19 @@ final class MCPAccessController: ObservableObject {
   }
 }
 
+private struct ConnectionParameters: Decodable {
+  let connectionID: UUID
+}
+
 private struct DescribeObjectParameters: Decodable {
+  let connectionID: UUID
   let schema: String
   let name: String
   let kind: String?
 }
 
 private struct ExecuteReadQueryParameters: Decodable {
+  let connectionID: UUID
   let sql: String
   let maxRows: Int?
 }
@@ -378,4 +396,16 @@ private struct ExecuteQueryParameters: Decodable {
   let connectionID: UUID
   let sql: String
   let maxRows: Int?
+}
+
+private struct MCPStatusSnapshot: Encodable {
+  let appVersion: String
+  let status = "ready"
+  let supportsMultipleConnections = true
+  let requiresUISelection = false
+  let connectionsTool = "solnari_list_connections"
+  let connectionScope =
+    "Use multiple connected databases concurrently by specifying connectionID on each request. Do not ask to switch the app selection."
+  let writePolicy =
+    "Read / Write connections execute changes immediately. Read-only connections reject changes."
 }

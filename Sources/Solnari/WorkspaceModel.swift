@@ -29,6 +29,7 @@ final class WorkspaceModel: ObservableObject {
   private var connectionOperationGeneration = UUID()
   private var databaseWorkspaces: [UUID: [String: ConnectionWorkspace]] = [:]
   private var planTasks: [UUID: Task<Void, Never>] = [:]
+  @Published private var mcpRequests: [UUID: UUID] = [:]
 
   init(
     backend: DatabaseBackend = DatabaseBackend(),
@@ -679,6 +680,7 @@ final class WorkspaceModel: ObservableObject {
     resumeRequestedAfterCleanup = false
     activeSuspensionCleanups += 1
     areConnectionOperationsSuspended = true
+    mcpRequests.removeAll()
     connectingProfileIDs = []
     for profileID in Array(connectionWorkspaces.keys) {
       updateWorkspace(for: profileID) {
@@ -804,37 +806,84 @@ final class WorkspaceModel: ObservableObject {
     return selectedConnection
   }
 
-  func mcpSchemaSnapshot() async throws -> [SchemaObject] {
-    let profile = try requireMCPConnection()
-    let sessionID = backendSessionID(for: profile.id)
-    let snapshot = try await backend.loadSchema(profileID: sessionID)
-    guard backendSessionID(for: profile.id) == sessionID, !areConnectionOperationsSuspended else {
-      throw MCPAccessError.selectedConnectionChanged
+  func mcpConnectedProfiles() -> [ConnectionProfile] {
+    guard !areConnectionOperationsSuspended else { return [] }
+    return connections.compactMap { profile in
+      guard profile.status == .connected, !connectingProfileIDs.contains(profile.id) else {
+        return nil
+      }
+      return profileForWorkspace(for: profile.id)
     }
-    updateWorkspace(for: profile.id) { $0.schema = snapshot }
-    return snapshot.objects
+  }
+
+  func mcpConnectionID(for profile: ConnectionProfile) -> UUID {
+    backendSessionID(for: profile.id)
+  }
+
+  func mcpRequestCount(for profileID: UUID) -> Int {
+    mcpRequests.values.filter { $0 == profileID }.count
+  }
+
+  private func withMCPSession<T: Sendable>(
+    profile: ConnectionProfile, requiredAccessLevel: DatabaseAccessLevel? = nil,
+    operation: @MainActor (UUID) async throws -> T
+  ) async throws -> T {
+    let parentID = backendSessionID(for: profile.id)
+    let requestID = UUID()
+    mcpRequests[requestID] = profile.id
+    defer { mcpRequests.removeValue(forKey: requestID) }
+    let password = profile.usesPersonalIAM ? "" : try passwordStore.password(for: profile.id) ?? ""
+    let sessionID: UUID
+    do {
+      sessionID = try await backend.openMCPSession(
+        parentID: parentID, password: password, requiredAccessLevel: requiredAccessLevel)
+    } catch {
+      recordConnectionFailure(error, profileID: profile.id)
+      throw error
+    }
+    do {
+      try Task.checkCancellation()
+      _ = try requireMCPConnection(connectionID: parentID)
+      let result = try await operation(sessionID)
+      await backend.disconnect(profileID: sessionID)
+      return result
+    } catch {
+      recordConnectionFailure(error, profileID: profile.id)
+      await backend.disconnect(profileID: sessionID)
+      throw error
+    }
+  }
+
+  func mcpSchemaSnapshot(connectionID: UUID? = nil) async throws -> [SchemaObject] {
+    let profile = try requireMCPConnection(connectionID: connectionID)
+    let parentID = backendSessionID(for: profile.id)
+    return try await withMCPSession(profile: profile) { sessionID in
+      let snapshot = try await backend.loadSchema(profileID: sessionID)
+      _ = try requireMCPConnection(connectionID: parentID)
+      updateWorkspace(for: profile.id) { $0.schema = snapshot }
+      return snapshot.objects
+    }
   }
 
   func mcpDescribeObject(
-    schema: String,
-    name: String,
-    kind: SchemaObjectKind?
+    connectionID: UUID? = nil, schema: String, name: String, kind: SchemaObjectKind?
   ) async throws -> SchemaObjectDetails {
-    let profile = try requireMCPConnection()
-    let sessionID = backendSessionID(for: profile.id)
-    let objects = try await backend.loadSchema(profileID: sessionID).objects
-    guard
-      let object = objects.first(where: {
-        $0.schema == schema && $0.name == name && (kind == nil || $0.kind == kind)
-      })
-    else {
-      throw MCPAccessError.schemaObjectNotFound
+    let profile = try requireMCPConnection(connectionID: connectionID)
+    return try await withMCPSession(profile: profile) { sessionID in
+      let objects = try await backend.loadSchema(profileID: sessionID).objects
+      guard
+        let object = objects.first(where: {
+          $0.schema == schema && $0.name == name && (kind == nil || $0.kind == kind)
+        })
+      else { throw MCPAccessError.schemaObjectNotFound }
+      return try await backend.loadSchemaObjectDetails(profileID: sessionID, object: object)
     }
-    return try await backend.loadSchemaObjectDetails(profileID: sessionID, object: object)
   }
 
-  func mcpExecuteReadOnlyQuery(sql: String, maximumRows: Int) async throws -> MCPQuerySnapshot {
-    let profile = try requireMCPConnection()
+  func mcpExecuteReadOnlyQuery(connectionID: UUID? = nil, sql: String, maximumRows: Int)
+    async throws -> MCPQuerySnapshot
+  {
+    let profile = try requireMCPConnection(connectionID: connectionID)
     guard profile.effectiveAccessLevel == .readOnly else {
       throw MCPAccessError.readOnlyConnectionRequired
     }
@@ -846,10 +895,7 @@ final class WorkspaceModel: ObservableObject {
   func mcpExecuteQuery(connectionID: UUID, sql: String, maximumRows: Int) async throws
     -> MCPQuerySnapshot
   {
-    let profile = try requireMCPConnection()
-    guard backendSessionID(for: profile.id) == connectionID else {
-      throw MCPAccessError.selectedConnectionChanged
-    }
+    let profile = try requireMCPConnection(connectionID: connectionID)
     guard profile.effectiveAccessLevel == .readWrite else {
       throw MCPAccessError.readWriteConnectionRequired
     }
@@ -861,51 +907,52 @@ final class WorkspaceModel: ObservableObject {
     profile: ConnectionProfile, sql: String, maximumRows: Int, accessLevel: DatabaseAccessLevel
   ) async throws -> MCPQuerySnapshot {
     guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, sql.utf16.count <= 200_000
-    else {
-      throw SolnariDatabaseError.queryNotAllowedForAccessLevel
-    }
-    guard !workspace(for: profile.id).isRunning, !connectingProfileIDs.contains(profile.id) else {
-      throw MCPAccessError.queryAlreadyRunning
-    }
-    updateWorkspace(for: profile.id) { $0.isRunning = true }
-    defer { updateWorkspace(for: profile.id) { $0.isRunning = false } }
-    let result: QueryExecutionResult
-    do {
-      result = try await backend.execute(
-        profileID: backendSessionID(for: profile.id), sql: sql, requiredAccessLevel: accessLevel)
-      updateWorkspace(for: profile.id) { $0.transactionState = result.report?.transactionState }
-    } catch {
-      recordConnectionFailure(error, profileID: profile.id)
-      updateWorkspace(for: profile.id) {
-        $0.transactionState = (error as? QueryFailureDetails)?.transactionState
+    else { throw SolnariDatabaseError.queryNotAllowedForAccessLevel }
+    return try await withMCPSession(profile: profile, requiredAccessLevel: accessLevel) {
+      sessionID in
+      let result = try await backend.execute(
+        profileID: sessionID, sql: sql, requiredAccessLevel: accessLevel)
+      if accessLevel == .readWrite,
+        let snapshot = try? await backend.loadSchema(profileID: sessionID),
+        !areConnectionOperationsSuspended,
+        connections.first(where: { $0.id == profile.id })?.status == .connected
+      {
+        updateWorkspace(for: profile.id) { $0.schema = snapshot }
       }
-      throw error
+      let rows = result.table.rows.prefix(min(max(maximumRows, 1), 200))
+      return MCPQuerySnapshot(
+        columns: result.table.columns,
+        rows: rows.map { $0.map(MCPQueryCell.init) },
+        returnedRowCount: rows.count,
+        truncated: result.table.rows.count > rows.count,
+        durationMilliseconds: result.durationMilliseconds,
+        report: result.report.map {
+          let hadOpenTransaction = $0.transactionState == "inTransaction"
+          return QueryExecutionReport(
+            commands: $0.commands,
+            transactionState: hadOpenTransaction ? "rolledBack" : $0.transactionState,
+            resultNotice: hadOpenTransaction
+              ? "The MCP session closed after this request; uncommitted work was rolled back. Complete transactions within one request."
+              : $0.resultNotice,
+            statementCount: $0.statementCount)
+        }
+      )
     }
-    if accessLevel == .readWrite,
-      let snapshot = try? await backend.loadSchema(profileID: backendSessionID(for: profile.id)),
-      !areConnectionOperationsSuspended,
-      connections.first(where: { $0.id == profile.id })?.status == .connected
-    {
-      updateWorkspace(for: profile.id) { $0.schema = snapshot }
-    }
-    let rows = result.table.rows.prefix(min(max(maximumRows, 1), 200))
-    return MCPQuerySnapshot(
-      columns: result.table.columns,
-      rows: rows.map { $0.map(MCPQueryCell.init) },
-      returnedRowCount: rows.count,
-      truncated: result.table.rows.count > rows.count,
-      durationMilliseconds: result.durationMilliseconds,
-      report: result.report.map {
-        QueryExecutionReport(
-          commands: $0.commands, transactionState: $0.transactionState,
-          resultNotice: $0.resultNotice, statementCount: $0.statementCount)
-      }
-    )
   }
 
-  private func requireMCPConnection() throws -> ConnectionProfile {
+  private func requireMCPConnection(connectionID: UUID? = nil) throws -> ConnectionProfile {
     guard !areConnectionOperationsSuspended else { throw MCPAccessError.connectionNotReady }
-    let profile = try mcpSelectedProfile()
+    let profile: ConnectionProfile
+    if let connectionID {
+      guard
+        let connected = mcpConnectedProfiles().first(where: {
+          backendSessionID(for: $0.id) == connectionID
+        })
+      else { throw MCPAccessError.connectionNotReady }
+      profile = connected
+    } else {
+      profile = try mcpSelectedProfile()
+    }
     guard profile.status == .connected, !connectingProfileIDs.contains(profile.id) else {
       throw MCPAccessError.connectionNotReady
     }
@@ -920,6 +967,7 @@ final class WorkspaceModel: ObservableObject {
     guard let profile = selectedConnection else { return false }
     return profile.engine == .postgresql && profile.status == .connected
       && !areConnectionOperationsSuspended && !isRunning && !isConnecting
+      && mcpRequestCount(for: profile.id) == 0
       && !assistant.isBusy && !loadingDatabaseProfileIDs.contains(profile.id)
       && !["inTransaction", "failedTransaction"].contains(
         workspace(for: profile.id).transactionState ?? "")

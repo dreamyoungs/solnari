@@ -110,10 +110,11 @@ struct DatabaseSwitchingTests {
         sql: "SELECT pg_sleep(0.2)", maximumRows: 1)
     }
     for _ in 0..<20 {
-      if workspace.isRunning { break }
+      if workspace.mcpRequestCount(for: profile.id) > 0 { break }
       await Task.yield()
     }
-    #expect(workspace.isRunning)
+    #expect(workspace.mcpRequestCount(for: profile.id) == 1)
+    #expect(!workspace.isRunning)
     #expect(!workspace.canSwitchDatabase)
     await workspace.switchDatabase(to: firstDatabase)
     #expect(workspace.selectedConnection?.database == secondDatabase)

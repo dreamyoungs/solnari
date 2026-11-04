@@ -519,3 +519,15 @@
 "Reconnect SSH tunnel and database session" = "SSH 터널과 DB 세션 다시 연결";
 "SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "SSH 터널은 열렸지만 DB 세션 연결에 실패했습니다. SSH 서버 기준 DB 호스트·포트, DB 인증 정보와 TLS 설정을 확인한 뒤 다시 연결하세요.";
 "The connection path failed: SSH tunnel opened, but the database session failed. Check the database host and port on the SSH server, database credentials and TLS settings, then reconnect." = "연결 경로 오류: SSH 터널은 열렸지만 DB 세션 연결에 실패했습니다. SSH 서버 기준 DB 호스트·포트, DB 인증 정보와 TLS 설정을 확인한 뒤 다시 연결하세요.";
+
+"MCP clients can choose among all currently connected databases." = "MCP 클라이언트는 현재 연결된 모든 DB 중에서 대상을 선택할 수 있습니다.";
+"MCP queries follow the requested connection's access level." = "MCP 쿼리는 요청한 연결의 접근 권한을 따릅니다.";
+"Connecting…" = "연결 중…";
+"Connect to Codex" = "Codex에 연결";
+"Registered. Restart Codex to load Solnari tools." = "등록했습니다. Solnari 도구를 불러오려면 Codex를 재시작하세요.";
+"Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below." = "등록하지 못했습니다. Codex 설치 및 설정 파일 쓰기 권한을 확인하거나 아래 등록 명령을 사용하세요.";
+"Uses the installed Codex app or CLI. No separate Node or MCP installation is needed." = "설치된 Codex 앱 또는 CLI를 사용합니다. Node나 MCP를 따로 설치할 필요가 없습니다.";
+
+"MCP concurrent requests" = "MCP 동시 실행 수";
+"Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply." = "기본값은 3개입니다. MCP 전용 세션은 요청 시 열고 완료 후 닫습니다. 저장·재연결하면 적용됩니다.";
+"MCP concurrent requests must be between 1 and 10." = "MCP 동시 실행 수는 1~10개로 설정하세요.";

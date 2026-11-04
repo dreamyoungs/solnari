@@ -24,7 +24,7 @@
 외부 local Agent
   → bundled STDIO MCP server
   → 사용자 전용 local socket
-  → 현재 선택한 Solnari read-only capability
+  → 명시적으로 지정한 연결된 DB의 access-level capability
   → 동일한 policy와 approval 검증
   → 위의 session 경계
 ```
@@ -64,16 +64,19 @@ policy와 database role이 강제해야 합니다. 현재 local vault는 평문 
 handoff를 제공합니다. 자동 잠금 해제를 위한 encryption key도 같은 사용자 영역에 있으므로,
 동일 사용자 권한을 탈취한 process에 대한 Keychain 수준의 보호는 제공하지 않습니다.
 읽기 전용 profile은 보수적인 SQL 사전 검사와 database session 쓰기 차단을 함께 사용합니다.
-외부 local Codex용 MCP는 기본 비활성화, 사용자 전용 socket, 현재 선택·연결된 profile 한정,
+외부 local Codex용 MCP는 기본 비활성화, 사용자 전용 socket, 현재 연결된 profile에서 요청별 대상 ID 지정,
 sanitized connection metadata와 응답 크기 제한을 구현했습니다. 화면 잠금·절전·사용자 전환과
-앱 종료 시 socket도 닫습니다.
+앱 종료 시 socket과 MCP 전용 세션도 닫습니다. MCP 요청은 앱의 세션과 분리되고, 연결별
+동시 실행 수는 기본 3개(1~10개)입니다. 요청마다 새 세션을 열고 닫아 임시 객체·세션 상태·
+미완료 트랜잭션을 다른 요청으로 넘기지 않습니다. Read / Write 연결의 쓰기는 추가 건별 승인
+없이 DB 권한 범위에서 즉시 실행되며, 읽기 전용 연결은 SQL 검사와 DB 세션 권한을 유지합니다.
 
 아직 다음 경계는 완성되지 않았습니다.
 
 - 기존 Kubernetes resource identity 검증과 최소 RBAC transport
 - crash orphan recovery와 session timeout
 - dialect-aware SQL parser, 공통 query timeout/cancel과 production approval
-- MCP write capability, 일회성 사람 승인과 dialect-aware SQL 분석
+- MCP 쓰기에 대한 일회성 사람 승인과 dialect-aware SQL 분석
 - signing/notarization된 배포물과 update 신뢰 경계
 
 README와 UI는 위 항목을 현재 구현된 보장으로 표시해서는 안 됩니다.

@@ -58,6 +58,7 @@ struct ConnectionProfileTransferTests {
       #expect(decoded.auditTextSettings == source.auditTextSettings)
       #expect(decoded.effectiveSecurityPolicy == source.effectiveSecurityPolicy)
       #expect(decoded.effectiveAccessLevel == source.effectiveAccessLevel)
+      #expect(decoded.effectiveMCPMaxConcurrentQueries == source.effectiveMCPMaxConcurrentQueries)
       #expect(decoded.status == .disconnected)
       #expect(decoded.latency == nil)
       #expect(decoded.serverVersion == nil)
