@@ -5,6 +5,15 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.7.2 Apple Silicon preview] - 2026-11-04
+
+### Fixed
+
+- Keep existing MCP access and database sessions open on screen lock, display sleep, and user
+  switching. Disconnect only on actual system sleep or app termination. Resume MCP access on
+  system wake without automatically reconnecting databases; screen events cannot resume a
+  system-sleep suspension. This does not prevent system sleep or database/network timeouts.
+
 ## [0.7.1 Apple Silicon preview] - 2026-11-04
 
 ### Fixed

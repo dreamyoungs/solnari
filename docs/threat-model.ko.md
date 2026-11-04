@@ -60,13 +60,14 @@ policy와 database role이 강제해야 합니다. 현재 local vault는 평문 
 ## 현재 보장과 차이
 
 현재 구현은 local connection profile과 AES-GCM credential vault, 자동 IAM의 password 비사용,
-명시적 transport 선택, loopback tunnel, 정상 종료·잠금·절전 cleanup과 Agent의 명시적 editor
+명시적 transport 선택, loopback tunnel, 정상 종료·시스템 절전 cleanup과 Agent의 명시적 editor
 handoff를 제공합니다. 자동 잠금 해제를 위한 encryption key도 같은 사용자 영역에 있으므로,
 동일 사용자 권한을 탈취한 process에 대한 Keychain 수준의 보호는 제공하지 않습니다.
 읽기 전용 profile은 보수적인 SQL 사전 검사와 database session 쓰기 차단을 함께 사용합니다.
 외부 local Codex용 MCP는 기본 비활성화, 사용자 전용 socket, 현재 연결된 profile에서 요청별 대상 ID 지정,
-sanitized connection metadata와 응답 크기 제한을 구현했습니다. 화면 잠금·절전·사용자 전환과
-앱 종료 시 socket과 MCP 전용 세션도 닫습니다. MCP 요청은 앱의 세션과 분리되고, 연결별
+sanitized connection metadata와 응답 크기 제한을 구현했습니다. 실제 시스템 절전과
+앱 종료 시 socket과 MCP 전용 세션도 닫습니다. 화면 잠금·디스플레이 꺼짐·사용자 전환에서는
+이미 허용한 MCP 접근과 DB 연결을 유지합니다. MCP 요청은 앱의 세션과 분리되고, 연결별
 동시 실행 수는 기본 3개(1~10개)입니다. 요청마다 새 세션을 열고 닫아 임시 객체·세션 상태·
 미완료 트랜잭션을 다른 요청으로 넘기지 않습니다. Read / Write 연결의 쓰기는 추가 건별 승인
 없이 DB 권한 범위에서 즉시 실행되며, 읽기 전용 연결은 SQL 검사와 DB 세션 권한을 유지합니다.

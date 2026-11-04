@@ -73,7 +73,7 @@ private 연결 경로와 사람·Agent 사이의 실행 경계를 명확하게 �
 - PostgreSQL/MySQL/SQLite의 문자셋·정렬 규칙 설정 UI
 - 절대 시간과 시간대 없는 값을 구분하는 결과 시간대 표시
 - 한국어·영어 런타임 전환과 macOS light/dark appearance
-- 앱 중복 실행 방지와 종료·잠금·절전·사용자 전환 시 연결 세션 정리
+- 앱 중복 실행 방지와 앱 종료·시스템 절전 시 연결 세션 정리, 화면 잠금·디스플레이 꺼짐 시 연결 유지
 - 읽기 전용 profile의 보수적인 SQL 사전 검사와 DB session 쓰기 차단
 - 현재 연결된 DB를 지정하여 metadata·schema와 연결 권한에 따른 조회·쓰기 query tool을 외부 Codex에 제공하는 opt-in local MCP server
 - [안전한 실행 계획 조회](docs/query-plans.md) 및 원본 SQL 보존
@@ -102,7 +102,7 @@ Pod 생성·삭제 권한이 추가로 필요합니다.
    어떤 project, cluster, namespace, proxy와 database를 거치는지 사용자가 확인할 수
    있어야 하며, private 경로가 실패했을 때 public/direct 경로로 자동 전환하지 않습니다.
 2. **짧게 존재하는 안전한 세션**
-   tunnel, database connection과 단기 credential은 앱 종료·화면 잠금·절전·timeout에
+   tunnel, database connection과 단기 credential은 앱 종료·시스템 절전·timeout에
    맞춰 정리되어야 합니다.
 3. **조직이 검증할 수 있는 정책**
    연결 방법, 보안 정책과 DB 접근 등급을 분리하고, 조직 profile이 대상과 허용 범위를

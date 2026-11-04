@@ -32,6 +32,7 @@ private struct SettingsDestinationMenuItems: View {
 private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
   private let environment = AppEnvironment.shared
   private let singleInstance = SingleInstanceCoordinator()
+  private var connectionLifecycle: ConnectionLifecycleObserver?
   private var isPrimaryInstance = false
   private var isTerminating = false
 
@@ -58,51 +59,9 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
       object: nil,
       suspensionBehavior: .deliverImmediately
     )
-    DistributedNotificationCenter.default().addObserver(
-      self,
-      selector: #selector(suspendConnections),
-      name: Notification.Name("com.apple.screenIsLocked"),
-      object: nil,
-      suspensionBehavior: .deliverImmediately
-    )
-    DistributedNotificationCenter.default().addObserver(
-      self,
-      selector: #selector(resumeConnectionOperations),
-      name: Notification.Name("com.apple.screenIsUnlocked"),
-      object: nil,
-      suspensionBehavior: .deliverImmediately
-    )
-    let workspaceNotifications = NSWorkspace.shared.notificationCenter
-    workspaceNotifications.addObserver(
-      self,
-      selector: #selector(suspendConnections),
-      name: NSWorkspace.willSleepNotification,
-      object: nil
-    )
-    workspaceNotifications.addObserver(
-      self,
-      selector: #selector(suspendConnections),
-      name: NSWorkspace.screensDidSleepNotification,
-      object: nil
-    )
-    workspaceNotifications.addObserver(
-      self,
-      selector: #selector(suspendConnections),
-      name: NSWorkspace.sessionDidResignActiveNotification,
-      object: nil
-    )
-    workspaceNotifications.addObserver(
-      self,
-      selector: #selector(resumeConnectionOperations),
-      name: NSWorkspace.didWakeNotification,
-      object: nil
-    )
-    workspaceNotifications.addObserver(
-      self,
-      selector: #selector(resumeConnectionOperations),
-      name: NSWorkspace.sessionDidBecomeActiveNotification,
-      object: nil
-    )
+    connectionLifecycle = ConnectionLifecycleObserver(
+      onSuspend: { [weak self] in self?.suspendConnections() },
+      onResume: { [weak self] in self?.resumeConnectionOperations() })
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -141,19 +100,18 @@ private final class SolnariAppDelegate: NSObject, NSApplicationDelegate {
 
   deinit {
     DistributedNotificationCenter.default().removeObserver(self)
-    NSWorkspace.shared.notificationCenter.removeObserver(self)
   }
 
   @objc private func activateFromSecondaryInstance(_ notification: Notification) {
     showMainWindow()
   }
 
-  @objc private func suspendConnections(_ notification: Notification) {
+  private func suspendConnections() {
     environment.mcpAccess.suspend()
     Task { await environment.workspace.suspendConnections() }
   }
 
-  @objc private func resumeConnectionOperations(_ notification: Notification) {
+  private func resumeConnectionOperations() {
     environment.workspace.resumeConnectionOperations()
     environment.mcpAccess.resumeIfNeeded()
   }

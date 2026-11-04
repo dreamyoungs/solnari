@@ -73,7 +73,7 @@ Solnari now aims to be:
 - Character-set and collation configuration UI
 - Display time zones that preserve zoned and zone-less timestamp semantics
 - Runtime Korean/English switching and native light/dark appearance
-- Single-instance lifecycle with session cleanup on quit, screen lock, sleep, and user switching
+- Single-instance lifecycle with session cleanup on quit and system sleep; connections stay open on screen lock and display sleep
 - Conservative SQL preflight and database-session write protection for read-only profiles
 - An opt-in local MCP server exposing metadata and schema for connected databases, and query tools governed by connection permissions to external Codex clients
 - [Non-analyzing query plans](docs/query-plans.md) without changing editor SQL
