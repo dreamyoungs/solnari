@@ -242,7 +242,8 @@ final class MCPAccessController: ObservableObject {
         result = try encode(
           MCPStatusSnapshot(
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-              ?? "development"))
+              ?? "development",
+            appBuild: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "development"))
       case "connections":
         result = try encode(workspace.mcpConnectedProfiles().map(connectionSnapshot))
       case "activeConnection":
@@ -400,6 +401,7 @@ private struct ExecuteQueryParameters: Decodable {
 
 private struct MCPStatusSnapshot: Encodable {
   let appVersion: String
+  let appBuild: String
   let status = "ready"
   let supportsMultipleConnections = true
   let requiresUISelection = false

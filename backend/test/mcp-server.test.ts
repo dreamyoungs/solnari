@@ -5,12 +5,44 @@ import {
   type SolnariBridge,
 } from "../src/mcp-app-bridge.js";
 import { createSolnariMCPServer } from "../src/mcp-server.js";
+import packageInfo from "../package.json" with { type: "json" };
 
 describe("Solnari MCP server", () => {
   const closeOperations: Array<() => Promise<void>> = [];
 
   afterEach(async () => {
     while (closeOperations.length > 0) await closeOperations.pop()?.();
+  });
+
+  it("identifies the server release even when the app bridge is unavailable", async () => {
+    const call = vi.fn(async () => {
+      throw new Error("Open Solnari and enable local MCP access in Settings.");
+    });
+    const server = createSolnariMCPServer({ call });
+    const client = new Client({ name: "solnari-test", version: "1.0.0" });
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    closeOperations.push(
+      () => client.close(),
+      () => server.close(),
+    );
+
+    expect(client.getServerVersion()?.version).toBe(packageInfo.version);
+    const tools = await client.listTools();
+    expect(
+      tools.tools.find((tool) => tool.name === "solnari_status")?.description,
+    ).toContain(`v${packageInfo.version}`);
+    const response = await client.callTool({
+      name: "solnari_status",
+      arguments: {},
+    });
+    expect(response.isError).toBe(true);
+    expect(response.structuredContent).toEqual({
+      mcpServerVersion: packageInfo.version,
+    });
+    expect(JSON.stringify(response.content)).toContain(packageInfo.version);
   });
 
   it("marks write-capable execution as destructive and non-idempotent", async () => {
@@ -79,6 +111,7 @@ describe("Solnari MCP server", () => {
     });
     expect(response.isError).not.toBe(true);
     expect(response.structuredContent).toEqual({
+      mcpServerVersion: packageInfo.version,
       data: { name: "Development", status: "Connected" },
     });
 
@@ -116,7 +149,10 @@ describe("Solnari MCP server", () => {
       arguments: query,
     });
     expect(denied.isError).toBe(true);
-    expect(denied.structuredContent).toEqual({ error: details });
+    expect(denied.structuredContent).toEqual({
+      mcpServerVersion: packageInfo.version,
+      error: details,
+    });
     expect(JSON.stringify(denied)).not.toContain(query.sql);
   });
 
@@ -149,7 +185,10 @@ describe("Solnari MCP server", () => {
       name: "solnari_list_connections",
       arguments: {},
     });
-    expect(listed.structuredContent).toEqual({ data: databases });
+    expect(listed.structuredContent).toEqual({
+      mcpServerVersion: packageInfo.version,
+      data: databases,
+    });
     const results = await Promise.all(
       databases.map(({ connectionID }) =>
         client.callTool({
@@ -159,7 +198,10 @@ describe("Solnari MCP server", () => {
       ),
     );
     expect(results.map((item) => item.structuredContent)).toEqual(
-      databases.map(({ connectionID }) => ({ data: { connectionID } })),
+      databases.map(({ connectionID }) => ({
+        mcpServerVersion: packageInfo.version,
+        data: { connectionID },
+      })),
     );
     expect(call.mock.calls.map(([method]) => method)).toEqual([
       "connections",

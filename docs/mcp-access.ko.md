@@ -76,6 +76,17 @@ MCP에는 전역 활성 연결이 없습니다. 연결된 개발·운영 DB를 �
 `solnari_status`는 `supportsMultipleConnections: true`, `requiresUISelection: false`와 앱 버전을
 반환합니다. 이전 도구 설명이 남아 있으면 MCP 클라이언트를 재시작하고 등록 앱 경로를 확인하세요.
 
+### 버전 확인
+
+MCP 초기 연결 응답의 서버 버전과 `solnari_status` 도구 설명에는 MCP 서버의 배포 버전이
+표시됩니다. 서버 버전은 backend 패키지 버전에서 가져오며 앱 배포 시 함께 갱신됩니다.
+앱 bridge 요청의 성공·실패 응답에는 `mcpServerVersion`을 포함하고, 텍스트 응답에도 버전을 표시합니다.
+앱이 꺼져 있거나 접근이 거부되어도 실행 중인 MCP 서버 버전을 확인할 수 있습니다.
+
+`solnari_status`의 `data.appVersion`과 `data.appBuild`는 실제 실행 중인 앱의 버전과 빌드 번호입니다.
+서버 버전과 앱 버전이 다르면 이전 MCP 프로세스 또는 다른 앱 경로가 사용 중인지 확인하세요.
+도구 설명 자체에 이전 버전이 보이면 클라이언트가 가져온 도구 목록도 확인해야 합니다.
+
 ### 연결별 MCP 동시 실행 수
 
 `연결 설정 → Safety & access → MCP 동시 실행 수`에서 연결별로 1~10개를 지정합니다.
