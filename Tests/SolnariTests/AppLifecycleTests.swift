@@ -1,9 +1,41 @@
+import AppKit
 import Foundation
 import Testing
 
 @testable import Solnari
 
 struct AppLifecycleTests {
+  @Test("화면 잠금·디스플레이 꺼짐·사용자 전환은 연결을 중단하거나 재개하지 않는다")
+  @MainActor
+  func screenEventsPreserveConnectionsAndDoNotResumeSystemSleep() {
+    let notifications = NotificationCenter()
+    var events: [String] = []
+    let observer = ConnectionLifecycleObserver(
+      notifications: notifications,
+      onSuspend: { events.append("suspend") },
+      onResume: { events.append("resume") })
+    withExtendedLifetime(observer) {
+      let screenEvents = [
+        Notification.Name("com.apple.screenIsLocked"),
+        Notification.Name("com.apple.screenIsUnlocked"),
+        NSWorkspace.screensDidSleepNotification,
+        NSWorkspace.screensDidWakeNotification,
+        NSWorkspace.sessionDidResignActiveNotification,
+        NSWorkspace.sessionDidBecomeActiveNotification,
+      ]
+      for name in screenEvents { notifications.post(name: name, object: nil) }
+      #expect(events.isEmpty)
+
+      notifications.post(name: NSWorkspace.willSleepNotification, object: nil)
+      #expect(events == ["suspend"])
+      for name in screenEvents { notifications.post(name: name, object: nil) }
+      #expect(events == ["suspend"])
+
+      notifications.post(name: NSWorkspace.didWakeNotification, object: nil)
+      #expect(events == ["suspend", "resume"])
+    }
+  }
+
   @Test("한 프로세스만 Solnari 실행 잠금을 소유한다")
   func aSingleProcessOwnsTheApplicationLock() throws {
     let directory = FileManager.default.temporaryDirectory

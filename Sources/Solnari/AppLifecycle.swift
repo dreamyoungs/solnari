@@ -3,6 +3,35 @@ import Darwin
 import Foundation
 
 @MainActor
+final class ConnectionLifecycleObserver: NSObject {
+  private let notifications: NotificationCenter
+  private let onSuspend: () -> Void
+  private let onResume: () -> Void
+
+  init(
+    notifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
+    onSuspend: @escaping () -> Void,
+    onResume: @escaping () -> Void
+  ) {
+    self.notifications = notifications
+    self.onSuspend = onSuspend
+    self.onResume = onResume
+    super.init()
+    notifications.addObserver(
+      self, selector: #selector(suspend), name: NSWorkspace.willSleepNotification, object: nil)
+    notifications.addObserver(
+      self, selector: #selector(resume), name: NSWorkspace.didWakeNotification, object: nil)
+  }
+
+  deinit {
+    notifications.removeObserver(self)
+  }
+
+  @objc private func suspend(_ notification: Notification) { onSuspend() }
+  @objc private func resume(_ notification: Notification) { onResume() }
+}
+
+@MainActor
 final class AppEnvironment {
   static let shared = AppEnvironment()
 
