@@ -476,6 +476,7 @@ struct ConnectionWorkspace: Hashable, Sendable {
   var querySourceObject: SchemaObject?
   var executionReport: QueryExecutionReport?
   var executionFailure: String?
+  var requiresManualReconnect = false
   var transactionState: String?
   var privilegeBaseline: QueryTableData?
   var privilegeVerificationMessage: String?
@@ -959,6 +960,7 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
   case invalidServerResponse
   case missingExecutable(String)
   case transportFailed(String)
+  case sshTunnelDisconnected
   case transportTimedOut
   case connectionTestTimedOut
   case databaseSwitchTimedOut
@@ -975,6 +977,8 @@ enum SolnariDatabaseError: LocalizedError, Sendable {
     case .invalidServerResponse: "The database returned an unexpected response."
     case .missingExecutable(let name): "Install or configure the required \(name) command."
     case .transportFailed(let message): "The connection path failed: \(message)"
+    case .sshTunnelDisconnected:
+      "The connection path failed: SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically."
     case .transportTimedOut: "The local connection path did not become ready in time."
     case .databaseSwitchTimedOut:
       "Opening the database timed out. The previous database is still selected."

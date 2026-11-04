@@ -241,9 +241,7 @@ actor DatabaseBackend {
     if connectedProfiles[profileID]?.transport == .ssh,
       !(await transports.isRunning(profileID: profileID))
     {
-      throw SolnariDatabaseError.transportFailed(
-        "SSH tunnel disconnected. Use Reconnect to rebuild the tunnel and open a new database session. Previous query or transaction outcomes may be unknown; check them before running SQL again. SQL is never replayed automatically."
-      )
+      throw SolnariDatabaseError.sshTunnelDisconnected
     }
     guard let engine = connectedEngines[profileID] else {
       throw SolnariDatabaseError.notConnected

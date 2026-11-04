@@ -279,8 +279,13 @@ final class WorkspaceModel: ObservableObject {
     guard workspace(for: profileID).schema.objects.contains(where: { $0.id == object.id }) else {
       throw MCPAccessError.schemaObjectNotFound
     }
-    return try await backend.loadSchemaObjectDetails(
-      profileID: backendSessionID(for: profileID), object: object)
+    do {
+      return try await backend.loadSchemaObjectDetails(
+        profileID: backendSessionID(for: profileID), object: object)
+    } catch {
+      recordConnectionFailure(error, profileID: profileID)
+      throw error
+    }
   }
 
   func generateSelect(for object: SchemaObject) {
@@ -487,6 +492,7 @@ final class WorkspaceModel: ObservableObject {
       $0.privilegeVerificationMessage = nil
       $0.executionReport = nil
       $0.executionFailure = nil
+      $0.requiresManualReconnect = false
       $0.transactionState = nil
     }
 
@@ -542,6 +548,7 @@ final class WorkspaceModel: ObservableObject {
       }
       updateWorkspace(for: profileID) { $0.schema = loadedSchema }
     } catch {
+      recordConnectionFailure(error, profileID: profileID)
       presentedError = error.localizedDescription
     }
   }
@@ -579,6 +586,10 @@ final class WorkspaceModel: ObservableObject {
       selectedTab?.kind == .query,
       let sql = selectedTab?.sql.trimmingCharacters(in: .whitespacesAndNewlines), !sql.isEmpty
     else { return }
+    guard !workspace(for: profileID).requiresManualReconnect else {
+      presentedError = SolnariDatabaseError.sshTunnelDisconnected.localizedDescription
+      return
+    }
     let explicitSourceObject = workspace(for: profileID).editorTabs.first {
       $0.id == workspace(for: profileID).selectedTabID
     }?.sourceObject
@@ -636,6 +647,7 @@ final class WorkspaceModel: ObservableObject {
         await refreshSchema(profileID: profileID)
       }
     } catch {
+      recordConnectionFailure(error, profileID: profileID)
       if areConnectionOperationsSuspended {
         updateWorkspace(for: profileID) {
           $0.queryTable = .empty
@@ -863,6 +875,7 @@ final class WorkspaceModel: ObservableObject {
         profileID: backendSessionID(for: profile.id), sql: sql, requiredAccessLevel: accessLevel)
       updateWorkspace(for: profile.id) { $0.transactionState = result.report?.transactionState }
     } catch {
+      recordConnectionFailure(error, profileID: profile.id)
       updateWorkspace(for: profile.id) {
         $0.transactionState = (error as? QueryFailureDetails)?.transactionState
       }
@@ -936,6 +949,7 @@ final class WorkspaceModel: ObservableObject {
         return name
       }
     } catch {
+      recordConnectionFailure(error, profileID: profile.id)
       if !areConnectionOperationsSuspended, generation == connectionOperationGeneration {
         presentedError = error.localizedDescription
       }
@@ -983,6 +997,21 @@ final class WorkspaceModel: ObservableObject {
       if !areConnectionOperationsSuspended, generation == connectionOperationGeneration {
         presentedError = error.localizedDescription
       }
+    }
+  }
+
+  // SQL 자체의 오류와 전송 단절을 구분해 실패한 연결에만 수동 복구를 요구합니다.
+  func recordConnectionFailure(_ error: any Error, profileID: UUID) {
+    guard !areConnectionOperationsSuspended, let error = error as? SolnariDatabaseError,
+      case .sshTunnelDisconnected = error,
+      let index = connections.firstIndex(where: { $0.id == profileID })
+    else { return }
+    connections[index].status = .failed
+    updateWorkspace(for: profileID) {
+      $0.requiresManualReconnect = true
+      $0.executionFailure = error.localizedDescription
+      $0.executionReport = nil
+      $0.transactionState = nil
     }
   }
 

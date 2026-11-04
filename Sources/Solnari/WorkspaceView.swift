@@ -483,7 +483,7 @@ private struct ResultsPane: View {
       }
       if model.selectedResultTab == "Results" {
         if let failure = model.executionFailure {
-          Text(failure).textSelection(.enabled).padding(20)
+          Text(settings.text(failure)).textSelection(.enabled).padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else if model.queryTable.columns.isEmpty, let report = model.executionReport {
           commandResults(report)
@@ -494,7 +494,7 @@ private struct ResultsPane: View {
         planResults
       } else {
         if let failure = model.executionFailure {
-          Text(failure).textSelection(.enabled).padding(20)
+          Text(settings.text(failure)).textSelection(.enabled).padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else if let report = model.executionReport {
           commandResults(report)
