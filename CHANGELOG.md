@@ -5,6 +5,14 @@ All notable changes to Solnari are documented here. The project follows
 
 ## [Unreleased]
 
+## [0.7.1 Apple Silicon preview] - 2026-11-04
+
+### Fixed
+
+- Report the release version in the MCP handshake instead of the hardcoded `0.1.0`.
+  Include the server version in tool responses, including bridge errors, and in the status
+  tool description. Report the running app build alongside its version to diagnose stale processes.
+
 ## [0.7.0 Apple Silicon preview] - 2026-11-04
 
 ### Added

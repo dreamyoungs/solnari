@@ -1,10 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import packageInfo from "../package.json" with { type: "json" };
 import {
   SolnariAppBridge,
   SolnariBridgeError,
   type SolnariBridge,
 } from "./mcp-app-bridge.js";
+
+const mcpServerVersion = packageInfo.version;
+const versionContent = {
+  type: "text" as const,
+  text: `Solnari MCP server v${mcpServerVersion}`,
+};
 
 const readOnlyAnnotations = {
   readOnlyHint: true,
@@ -23,8 +30,11 @@ const result = async (operation: Promise<unknown>) => {
   try {
     const data = await operation;
     return {
-      content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      structuredContent: { data },
+      content: [
+        { type: "text" as const, text: JSON.stringify(data, null, 2) },
+        versionContent,
+      ],
+      structuredContent: { data, mcpServerVersion },
     };
   } catch (error) {
     const message =
@@ -32,11 +42,14 @@ const result = async (operation: Promise<unknown>) => {
         ? error.message
         : "Solnari rejected the MCP request.";
     return {
-      content: [{ type: "text" as const, text: message }],
+      content: [{ type: "text" as const, text: message }, versionContent],
       isError: true,
-      ...(error instanceof SolnariBridgeError && error.details
-        ? { structuredContent: { error: error.details } }
-        : {}),
+      structuredContent: {
+        mcpServerVersion,
+        ...(error instanceof SolnariBridgeError && error.details
+          ? { error: error.details }
+          : {}),
+      },
     };
   }
 };
@@ -48,7 +61,7 @@ export const createSolnariMCPServer = (
     {
       name: "solnari",
       title: "Solnari Database Tools",
-      version: "0.1.0",
+      version: mcpServerVersion,
       description:
         "Access multiple already connected databases by connectionID, independently of the Solnari app selection.",
       websiteUrl: "https://github.com/dreamyoungs/solnari",
@@ -79,7 +92,8 @@ export const createSolnariMCPServer = (
     {
       title: "Check Solnari MCP status",
       description:
-        "Check whether the local Solnari app MCP bridge is available.",
+        `Solnari MCP server v${mcpServerVersion}. Check the running app version/build and whether its MCP bridge is available. ` +
+        "Compare mcpServerVersion with appVersion to diagnose an outdated MCP process or app.",
       inputSchema: z.object({}),
       annotations: { ...readOnlyAnnotations, openWorldHint: false },
     },
