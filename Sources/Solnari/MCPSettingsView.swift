@@ -139,7 +139,7 @@ struct MCPSettingsView: View {
           .foregroundStyle(.secondary)
         }
       } header: {
-        Text(settings.text("Connect Codex"))
+        Text(settings.text("Connect MCP"))
       }
     }
     .formStyle(.grouped)

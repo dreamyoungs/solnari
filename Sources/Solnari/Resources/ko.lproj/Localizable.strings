@@ -51,7 +51,7 @@
 "Only the currently selected connection is exposed." = "현재 선택한 연결만 외부에 제공합니다.";
 "Credentials, hosts, and cloud project identifiers are never exposed." = "인증 정보, 호스트와 Cloud 프로젝트 식별자는 제공하지 않습니다.";
 "Query tools require an already connected read-only profile." = "쿼리 도구는 연결된 읽기 전용 프로필에서만 사용할 수 있습니다.";
-"Connect Codex" = "Codex 연결";
+"Connect MCP" = "MCP 연결";
 "Copy Codex registration command" = "Codex 등록 명령 복사";
 "Run once, then restart Codex." = "한 번 실행한 다음 Codex를 재시작하세요.";
 "Build the Solnari app bundle to generate its MCP registration command." = "MCP 등록 명령을 만들려면 Solnari 앱 번들을 빌드하세요.";

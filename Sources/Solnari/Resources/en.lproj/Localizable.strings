@@ -74,7 +74,7 @@
 "Only the currently selected connection is exposed." = "Only the currently selected connection is exposed.";
 "Credentials, hosts, and cloud project identifiers are never exposed." = "Credentials, hosts, and cloud project identifiers are never exposed.";
 "Query tools require an already connected read-only profile." = "Query tools require an already connected read-only profile.";
-"Connect Codex" = "Connect Codex";
+"Connect MCP" = "Connect MCP";
 "Copy Codex registration command" = "Copy Codex registration command";
 "Run once, then restart Codex." = "Run once, then restart Codex.";
 "Build the Solnari app bundle to generate its MCP registration command." = "Build the Solnari app bundle to generate its MCP registration command.";
