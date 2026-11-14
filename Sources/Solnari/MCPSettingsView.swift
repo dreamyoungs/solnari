@@ -66,25 +66,45 @@ struct MCPSettingsView: View {
 
       Section {
         if let command = mcpAccess.registrationCommand {
-          Button(settings.text(isInstalling ? "Connecting…" : "Connect to Codex")) {
-            isInstalling = true
-            registrationMessage = nil
-            Task {
-              do {
-                try await mcpAccess.installInCodex()
-                mcpAccess.setEnabled(true)
-                registrationMessage = "Registered. Restart Codex to load Solnari tools."
-              } catch {
-                registrationMessage =
-                  "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below."
+          HStack(spacing: 10) {
+            Button(settings.text(isInstalling ? "Connecting…" : "Connect to Codex")) {
+              isInstalling = true
+              registrationMessage = nil
+              Task {
+                do {
+                  try await mcpAccess.installInCodex()
+                  mcpAccess.setEnabled(true)
+                  registrationMessage = "Registered. Restart Codex to load Solnari tools."
+                } catch {
+                  registrationMessage =
+                    "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below."
+                }
+                isInstalling = false
               }
-              isInstalling = false
             }
+            .disabled(isInstalling)
+
+            Button(settings.text(isInstalling ? "Connecting…" : "Connect to Antigravity")) {
+              isInstalling = true
+              registrationMessage = nil
+              Task {
+                do {
+                  try await mcpAccess.installInAntigravity()
+                  mcpAccess.setEnabled(true)
+                  registrationMessage =
+                    "Registered in Antigravity. Start a new session or reload MCP to load Solnari tools."
+                } catch {
+                  registrationMessage =
+                    "Antigravity registration failed. Check that ~/.gemini/config/mcp_config.json is writable."
+                }
+                isInstalling = false
+              }
+            }
+            .disabled(isInstalling)
           }
-          .disabled(isInstalling)
           Text(
             settings.text(
-              "Uses the installed Codex app or CLI. No separate Node or MCP installation is needed."
+              "Uses the installed Codex app or CLI, or updates ~/.gemini/config/mcp_config.json for Antigravity."
             )
           )
           .font(.caption)

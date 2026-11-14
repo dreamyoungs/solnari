@@ -51,6 +51,62 @@ enum MCPRegistration {
     }.value
   }
 
+  static var antigravityConfigURL: URL {
+    FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent(".gemini/config/mcp_config.json")
+  }
+
+  static func installInAntigravity(
+    serverArguments: [String],
+    configURL: URL? = nil
+  ) async throws {
+    guard let command = serverArguments.first else { throw RegistrationError.failed }
+    let arguments = Array(serverArguments.dropFirst())
+    let targetURL = configURL ?? antigravityConfigURL
+    try await Task.detached {
+      let directory = targetURL.deletingLastPathComponent()
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+      var root: [String: Any] = [:]
+      if FileManager.default.fileExists(atPath: targetURL.path) {
+        let existing = try Data(contentsOf: targetURL)
+        let trimmed = String(data: existing, encoding: .utf8)?
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+          guard
+            let parsed = try JSONSerialization.jsonObject(with: existing) as? [String: Any]
+          else {
+            throw RegistrationError.failed
+          }
+          root = parsed
+        }
+      }
+
+      var servers: [String: Any]
+      if let existingServers = root["mcpServers"] {
+        guard let dictionary = existingServers as? [String: Any] else {
+          throw RegistrationError.failed
+        }
+        servers = dictionary
+      } else {
+        servers = [:]
+      }
+
+      servers["solnari"] = [
+        "command": command,
+        "args": arguments,
+      ]
+      root["mcpServers"] = servers
+
+      var serialized = try JSONSerialization.data(
+        withJSONObject: root,
+        options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+      )
+      serialized.append(0x0A)
+      try serialized.write(to: targetURL, options: .atomic)
+    }.value
+  }
+
   enum RegistrationError: Error {
     case failed
   }

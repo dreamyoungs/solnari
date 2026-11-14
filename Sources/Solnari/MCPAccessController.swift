@@ -204,6 +204,13 @@ final class MCPAccessController: ObservableObject {
     try await MCPRegistration.install(executable: executable, serverArguments: arguments)
   }
 
+  func installInAntigravity(configURL: URL? = nil) async throws {
+    guard let arguments = registrationArguments else {
+      throw MCPRegistration.RegistrationError.failed
+    }
+    try await MCPRegistration.installInAntigravity(serverArguments: arguments, configURL: configURL)
+  }
+
   private func start() {
     stop(state: .starting)
     do {

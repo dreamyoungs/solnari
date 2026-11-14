@@ -527,6 +527,10 @@
 "Registered. Restart Codex to load Solnari tools." = "등록했습니다. Solnari 도구를 불러오려면 Codex를 재시작하세요.";
 "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below." = "등록하지 못했습니다. Codex 설치 및 설정 파일 쓰기 권한을 확인하거나 아래 등록 명령을 사용하세요.";
 "Uses the installed Codex app or CLI. No separate Node or MCP installation is needed." = "설치된 Codex 앱 또는 CLI를 사용합니다. Node나 MCP를 따로 설치할 필요가 없습니다.";
+"Connect to Antigravity" = "Antigravity에 연결";
+"Registered in Antigravity. Start a new session or reload MCP to load Solnari tools." = "Antigravity에 등록했습니다. Solnari 도구를 불러오려면 새 세션을 시작하거나 MCP를 다시 불러오세요.";
+"Antigravity registration failed. Check that ~/.gemini/config/mcp_config.json is writable." = "Antigravity에 등록하지 못했습니다. ~/.gemini/config/mcp_config.json 쓰기 권한을 확인하세요.";
+"Uses the installed Codex app or CLI, or updates ~/.gemini/config/mcp_config.json for Antigravity." = "설치된 Codex 앱·CLI를 사용하거나 Antigravity용 ~/.gemini/config/mcp_config.json을 갱신합니다.";
 
 "MCP concurrent requests" = "MCP 동시 실행 수";
 "Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply." = "기본값은 3개입니다. MCP 전용 세션은 요청 시 열고 완료 후 닫습니다. 저장·재연결하면 적용됩니다.";

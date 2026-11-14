@@ -208,6 +208,10 @@
 "Registered. Restart Codex to load Solnari tools." = "Registered. Restart Codex to load Solnari tools.";
 "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below." = "Registration failed. Check that Codex is installed and its configuration is writable, or use the registration command below.";
 "Uses the installed Codex app or CLI. No separate Node or MCP installation is needed." = "Uses the installed Codex app or CLI. No separate Node or MCP installation is needed.";
+"Connect to Antigravity" = "Connect to Antigravity";
+"Registered in Antigravity. Start a new session or reload MCP to load Solnari tools." = "Registered in Antigravity. Start a new session or reload MCP to load Solnari tools.";
+"Antigravity registration failed. Check that ~/.gemini/config/mcp_config.json is writable." = "Antigravity registration failed. Check that ~/.gemini/config/mcp_config.json is writable.";
+"Uses the installed Codex app or CLI, or updates ~/.gemini/config/mcp_config.json for Antigravity." = "Uses the installed Codex app or CLI, or updates ~/.gemini/config/mcp_config.json for Antigravity.";
 
 "MCP concurrent requests" = "MCP concurrent requests";
 "Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply." = "Default: 3. MCP uses separate sessions opened on demand and closed after each request. Save and reconnect to apply.";
